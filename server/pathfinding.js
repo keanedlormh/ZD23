@@ -1,10 +1,7 @@
 /**
- * server/pathfinding.js - NUEVO ARCHIVO
- * Implementación del algoritmo A* para navegación de zombies
- *
- * *** ACTUALIZADO: Se eliminaron las funciones 'smoothPath' y 'hasLineOfSight'
- * ya que causaban un movimiento de "zigzag" al crear atajos angulares.
- * Ahora solo se usa el camino puro de A* (basado en la cuadrícula).
+ * server/pathfinding.js - ACTUALIZADO
+ * - Desactivado el movimiento diagonal en 'getNeighbors' para forzar rutas "Manhattan".
+ * - Simplificado el 'moveCost' en 'findPath' ya que ahora siempre es 1.
  */
 
 class PriorityQueue {
@@ -43,6 +40,7 @@ class Pathfinder {
 
     /**
      * Obtiene los vecinos válidos de una celda
+     * *** DIAGONALES DESACTIVADAS ***
      */
     getNeighbors(node) {
         const neighbors = [];
@@ -50,33 +48,23 @@ class Pathfinder {
             { x: 0, y: -1 },  // Arriba
             { x: 1, y: 0 },   // Derecha
             { x: 0, y: 1 },   // Abajo
-            { x: -1, y: 0 },  // Izquierda
-            // Diagonales (opcional, pero mejora el movimiento)
+            { x: -1, y: 0 }   // Izquierda
+            // Diagonales (desactivadas para evitar "zigzag")
+            /*
             { x: 1, y: -1 },  // Arriba-Derecha
             { x: 1, y: 1 },   // Abajo-Derecha
             { x: -1, y: 1 },  // Abajo-Izquierda
             { x: -1, y: -1 }  // Arriba-Izquierda
+            */
         ];
 
         for (const dir of directions) {
             const newX = node.x + dir.x;
             const newY = node.y + dir.y;
 
-            // Verificar límites
-            if (newX >= 0 && newX < this.cols && newY >= 0 && newY < this.rows) {
-                // Verificar que sea transitable
-                if (this.grid[newY][newX] === 0) {
-                    // Para movimientos diagonales, verificar que los lados también estén libres
-                    if (dir.x !== 0 && dir.y !== 0) {
-                        const checkX = this.grid[node.y][newX] === 0;
-                        const checkY = this.grid[newY][node.x] === 0;
-                        if (checkX && checkY) {
-                            neighbors.push({ x: newX, y: newY });
-                        }
-                    } else {
-                        neighbors.push({ x: newX, y: newY });
-                    }
-                }
+            // Verificar límites y transitabilidad
+            if (newX >= 0 && newX < this.cols && newY >= 0 && newY < this.rows && this.grid[newY][newX] === 0) {
+                neighbors.push({ x: newX, y: newY });
             }
         }
 
@@ -85,17 +73,11 @@ class Pathfinder {
 
     /**
      * Algoritmo A* para encontrar el camino más corto
-     * @param {Object} start - Posición de inicio {x, y} en coordenadas de grid
-     * @param {Object} goal - Posición objetivo {x, y} en coordenadas de grid
-     * @returns {Array} - Array de posiciones {x, y} que forman el camino, o null si no hay camino
      */
     findPath(start, goal) {
-        // Validar posiciones
         if (!this.isValid(start) || !this.isValid(goal)) {
             return null;
         }
-
-        // Si estamos en el objetivo
         if (start.x === goal.x && start.y === goal.y) {
             return [start];
         }
@@ -114,21 +96,19 @@ class Pathfinder {
         openSet.enqueue(start, fScore.get(startKey));
 
         let iterations = 0;
-        const maxIterations = 1000; // Límite de seguridad
+        const maxIterations = 1000; 
 
         while (!openSet.isEmpty() && iterations < maxIterations) {
             iterations++;
             const current = openSet.dequeue();
             const currentKey = `${current.x},${current.y}`;
 
-            // ¿Llegamos al objetivo?
             if (currentKey === goalKey) {
                 return this.reconstructPath(cameFrom, current);
             }
 
             closedSet.add(currentKey);
 
-            // Explorar vecinos
             const neighbors = this.getNeighbors(current);
             for (const neighbor of neighbors) {
                 const neighborKey = `${neighbor.x},${neighbor.y}`;
@@ -137,10 +117,8 @@ class Pathfinder {
                     continue;
                 }
 
-                // Costo de movimiento (diagonal cuesta más)
-                const isDiagonal = neighbor.x !== current.x && neighbor.y !== current.y;
-                const moveCost = isDiagonal ? 1.414 : 1; // √2 ≈ 1.414
-
+                // *** COSTE SIMPLIFICADO: Siempre 1 (no hay diagonales) ***
+                const moveCost = 1;
                 const tentativeGScore = gScore.get(currentKey) + moveCost;
 
                 if (!gScore.has(neighborKey) || tentativeGScore < gScore.get(neighborKey)) {
@@ -151,9 +129,7 @@ class Pathfinder {
                 }
             }
         }
-
-        // No se encontró camino
-        return null;
+        return null; // No se encontró camino
     }
 
     /**
@@ -168,7 +144,6 @@ class Pathfinder {
             path.unshift(current);
             currentKey = `${current.x},${current.y}`;
         }
-
         return path;
     }
 
