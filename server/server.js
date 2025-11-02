@@ -86,7 +86,7 @@ function handleGameCleanup(roomId) {
     if (game.players.length === 0) {
         if (game.gameLoopInterval) clearInterval(game.gameLoopInterval);
         activeGames.delete(roomId);
-        console.log(`[CLEANUP] Sala ${roomId} eliminada.`);
+        // console.log(`[CLEANUP] Sala ${roomId} eliminada.`);
     } else {
         let currentHost = game.players.find(p => p.isHost);
 
@@ -94,7 +94,7 @@ function handleGameCleanup(roomId) {
             game.players.forEach(p => p.isHost = false); 
             const newHost = game.players[0];
             newHost.isHost = true;
-            console.log(`[LOBBY] Nuevo Host en sala ${roomId}: ${newHost.name}`);
+            // console.log(`[LOBBY] Nuevo Host en sala ${roomId}: ${newHost.name}`);
         }
         io.to(roomId).emit('lobbyUpdate', game.getLobbyData());
     }
@@ -103,7 +103,7 @@ function handleGameCleanup(roomId) {
 // --- SOCKET.IO ---
 
 io.on('connection', (socket) => {
-    console.log(`[CONEXION] Usuario: ${socket.id}`);
+    // console.log(`[CONEXION] Usuario: ${socket.id}`);
 
     // Crear partida CON configuracion
     socket.on('createGame', (data) => {
@@ -126,8 +126,8 @@ io.on('connection', (socket) => {
 
         socket.join(roomId);
 
-        console.log(`[LOBBY] Partida creada: ${roomId} por ${playerName}`);
-        console.log(`[CONFIG] Configuracion:`, config);
+        // console.log(`[LOBBY] Partida creada: ${roomId} por ${playerName}`);
+        // console.log(`[CONFIG] Configuracion:`, config);
         socket.emit('gameCreated', newGame.getLobbyData());
     });
 
@@ -149,7 +149,7 @@ io.on('connection', (socket) => {
         userToRoom.set(socket.id, roomId);
         socket.join(roomId);
 
-        console.log(`[LOBBY] ${playerName} se unio a sala ${roomId}`);
+        // console.log(`[LOBBY] ${playerName} se unio a sala ${roomId}`);
 
         socket.emit('joinSuccess', game.getLobbyData()); 
         io.to(roomId).emit('lobbyUpdate', game.getLobbyData());
@@ -163,7 +163,7 @@ io.on('connection', (socket) => {
             game.players = game.players.filter(p => p.id !== socket.id);
             userToRoom.delete(socket.id);
 
-            console.log(`[LOBBY] Jugador ${socket.id} abandono sala ${roomId}`);
+            // console.log(`[LOBBY] Jugador ${socket.id} abandono sala ${roomId}`);
             handleGameCleanup(roomId);
         }
     });
@@ -177,8 +177,8 @@ io.on('connection', (socket) => {
             return;
         }
 
-        console.log(`[GAME START] Iniciando en sala ${roomId}`);
-        console.log(`[CONFIG] Usando configuracion:`, game.config);
+        // console.log(`[GAME START] Iniciando en sala ${roomId}`);
+        // console.log(`[CONFIG] Usando configuracion:`, game.config);
 
         const playerData = game.players.map(p => ({ id: p.id, name: p.name }));
         
@@ -203,7 +203,7 @@ io.on('connection', (socket) => {
                 game.status = 'finished';
                 const finalData = game.gameLogic.getFinalScore();
                 io.to(roomId).emit('gameOver', finalData);
-                console.log(`[GAME OVER] Sala ${roomId} - Puntuacion: ${finalData.finalScore}, Oleada: ${finalData.finalWave}`);
+                // console.log(`[GAME OVER] Sala ${roomId} - Puntuacion: ${finalData.finalScore}, Oleada: ${finalData.finalWave}`);
                 return;
             }
 
@@ -227,7 +227,7 @@ io.on('connection', (socket) => {
         const game = activeGames.get(roomId);
 
         if (game) {
-            console.log(`[DESCONEXION] Jugador ${socket.id} en sala ${roomId}`);
+            // console.log(`[DESCONEXION] Jugador ${socket.id} en sala ${roomId}`);
 
             game.players = game.players.filter(p => p.id !== socket.id);
             userToRoom.delete(socket.id);
@@ -242,7 +242,7 @@ io.on('connection', (socket) => {
             userToRoom.delete(socket.id); 
         }
 
-        console.log(`[DESCONEXION] Usuario: ${socket.id}`);
+        // console.log(`[DESCONEXION] Usuario: ${socket.id}`);
     });
 });
 
@@ -253,7 +253,6 @@ app.get('/', (req, res) => {
 });
 
 server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Tick Rate: ${SERVER_TICK_RATE} TPS`);
+    // console.log(`Server running on port ${PORT}`);
+    // console.log(`Tick Rate: ${SERVER_TICK_RATE} TPS`);
 });
-```
