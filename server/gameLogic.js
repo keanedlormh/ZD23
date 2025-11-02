@@ -1,6 +1,7 @@
 /**
  * server/gameLogic.js - ACTUALIZADO
- * Lógica de juego mejorada con pathfinding, colisiones de zombies y configuración
+ * Corregida la lógica de seguimiento de camino (path following) para eliminar el "stutter"
+ * y mejorada la detección de atascos.
  */
 
 const ServerMapGenerator = require('./serverMapGenerator'); 
@@ -14,7 +15,7 @@ class ServerEntity {
         this.x = x;
         this.y = y;
         this.radius = radius;
-        this.speed = speed;
+        this.speed = speed; // Se interpreta como "unidades por tick"
     }
 }
 
@@ -115,7 +116,9 @@ class ServerZombie extends ServerEntity {
             (this.y - this.lastPosition.y) ** 2
         );
 
-        if (movedDistance < (this.speed * (deltaTime / 1000)) * 0.5) { // Si se movió menos de la mitad de lo esperado
+        // *** LÓGICA DE ATASCO MEJORADA ***
+        // Comparamos la distancia movida con la velocidad esperada (por tick)
+        if (movedDistance < this.speed * 0.5) { // Si se movió menos de la mitad de lo esperado
             this.stuckTimer += deltaTime;
         } else {
             this.stuckTimer = 0;
@@ -127,18 +130,15 @@ class ServerZombie extends ServerEntity {
             
             let goalTarget = target; // Por defecto, el jugador
 
-            // *** NUEVA LÓGICA DE DESATASCO ***
-            // Si se atascó (probablemente por otro zombie)
+            // *** LÓGICA DE DESATASCO ***
             if (this.stuckTimer > 1000) {
                 // console.log(`[AI] Zombie ${this.id} atascado. Buscando ruta alternativa.`);
                 const gridPos = mapGenerator.worldToGrid(this.x, this.y);
                 
                 let foundTempGoal = false;
-                // Intentar 5 veces encontrar un punto cercano válido
                 for (let i = 0; i < 5; i++) {
-                    // Rango de -3 a +3
                     const randomDir = { x: Math.floor(Math.random() * 7) - 3, y: Math.floor(Math.random() * 7) - 3 }; 
-                    if (randomDir.x === 0 && randomDir.y === 0) continue; // No elegir el mismo sitio
+                    if (randomDir.x === 0 && randomDir.y === 0) continue; 
 
                     const tempGridGoal = { x: gridPos.x + randomDir.x, y: gridPos.y + randomDir.y };
 
@@ -150,7 +150,6 @@ class ServerZombie extends ServerEntity {
                     }
                 }
                 if (!foundTempGoal) {
-                    // No se encontró, seguir al jugador (fallback)
                     goalTarget = target;
                 }
             }
@@ -161,31 +160,39 @@ class ServerZombie extends ServerEntity {
             this.stuckTimer = 0;
         }
 
-        // Seguir el camino calculado
+        // *** LÓGICA DE MOVIMIENTO (PATH FOLLOWING) CORREGIDA ***
         if (this.path.length > 0) {
-            const nextWaypoint = this.path[this.currentPathIndex];
+            const nextWaypointNode = this.path[this.currentPathIndex];
             
-            if (nextWaypoint) {
-                const waypointWorld = mapGenerator.gridToWorld(nextWaypoint.x, nextWaypoint.y);
+            if (nextWaypointNode) {
+                const waypointWorld = mapGenerator.gridToWorld(nextWaypointNode.x, nextWaypointNode.y);
                 const wpDx = waypointWorld.x - this.x;
                 const wpDy = waypointWorld.y - this.y;
                 const wpDist = Math.sqrt(wpDx * wpDx + wpDy * wpDy);
 
-                // Si llegamos al waypoint, pasar al siguiente
-                if (wpDist < this.speed) {
+                const moveDistance = this.speed; // Distancia a mover este tick
+
+                if (wpDist <= moveDistance) {
+                    // --- LLEGAMOS AL WAYPOINT ---
+                    // 1. Ajustar la posición exactamente al waypoint
+                    this.x = waypointWorld.x;
+                    this.y = waypointWorld.y;
+
+                    // 2. Avanzar al siguiente waypoint
                     this.currentPathIndex++;
                     
-                    // Si terminamos el camino, recalcular
+                    // 3. Si era el último, limpiar el camino para recalcular
                     if (this.currentPathIndex >= this.path.length) {
                         this.path = [];
                         this.currentPathIndex = 0;
                     }
                 } else {
-                    // Moverse hacia el waypoint
+                    // --- SEGUIMOS EN CAMINO ---
+                    // Si estamos lejos, moverse hacia el waypoint
                     const nx = wpDx / wpDist;
                     const ny = wpDy / wpDist;
-                    this.x += nx * this.speed;
-                    this.y += ny * this.speed;
+                    this.x += nx * moveDistance;
+                    this.y += ny * moveDistance;
                 }
             }
         } else {
@@ -271,7 +278,6 @@ class GameLogic {
             { x: entity.x - radius, y: entity.y },
             { x: entity.x, y: entity.y + radius },
             { x: entity.x, y: entity.y - radius }
-            // Quitar los puntos diagonales puede ayudar con los atascos en esquinas
         ];
 
         for (const p of checkPoints) {
