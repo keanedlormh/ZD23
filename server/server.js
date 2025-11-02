@@ -1,7 +1,7 @@
 ```javascript
 /**
- * server/server.js - ACTUALIZADO
- * Servidor con soporte para configuración personalizada
+ * server/server.js - CORREGIDO
+ * Todas las comillas tipográficas reemplazadas por comillas estándar
  */
 
 const express = require('express');
@@ -21,7 +21,7 @@ const SERVER_TICK_RATE = 30;
 const activeGames = new Map();
 const userToRoom = new Map();
 
-// Configuración por defecto (misma que en el cliente)
+// Configuracion por defecto (misma que en el cliente)
 const DEFAULT_CONFIG = {
     playerHealth: 100,
     playerSpeed: 6,
@@ -54,7 +54,7 @@ class Game {
         this.status = 'lobby';
         this.gameLogic = null;
         this.gameLoopInterval = null;
-        this.config = config || { ...DEFAULT_CONFIG }; // Guardar configuración de la partida
+        this.config = config || { ...DEFAULT_CONFIG };
     }
 
     getLobbyData() {
@@ -103,9 +103,9 @@ function handleGameCleanup(roomId) {
 // --- SOCKET.IO ---
 
 io.on('connection', (socket) => {
-    console.log(`[CONEXIÓN] Usuario: ${socket.id}`);
+    console.log(`[CONEXION] Usuario: ${socket.id}`);
 
-    // Crear partida CON configuración
+    // Crear partida CON configuracion
     socket.on('createGame', (data) => {
         let roomId = generateRoomId();
         while (activeGames.has(roomId)) {
@@ -113,7 +113,7 @@ io.on('connection', (socket) => {
         }
 
         if (userToRoom.has(socket.id)) {
-             socket.emit('joinFailed', 'Ya estás en una sala.');
+             socket.emit('joinFailed', 'Ya estas en una sala.');
             return;
         }
 
@@ -127,7 +127,7 @@ io.on('connection', (socket) => {
         socket.join(roomId);
 
         console.log(`[LOBBY] Partida creada: ${roomId} por ${playerName}`);
-        console.log(`[CONFIG] Configuración:`, config);
+        console.log(`[CONFIG] Configuracion:`, config);
         socket.emit('gameCreated', newGame.getLobbyData());
     });
 
@@ -140,7 +140,7 @@ io.on('connection', (socket) => {
         }
 
         if (userToRoom.has(socket.id)) {
-            socket.emit('joinFailed', 'Ya estás en una sala.');
+            socket.emit('joinFailed', 'Ya estas en una sala.');
             return;
         }
 
@@ -149,7 +149,7 @@ io.on('connection', (socket) => {
         userToRoom.set(socket.id, roomId);
         socket.join(roomId);
 
-        console.log(`[LOBBY] ${playerName} se unió a sala ${roomId}`);
+        console.log(`[LOBBY] ${playerName} se unio a sala ${roomId}`);
 
         socket.emit('joinSuccess', game.getLobbyData()); 
         io.to(roomId).emit('lobbyUpdate', game.getLobbyData());
@@ -163,7 +163,7 @@ io.on('connection', (socket) => {
             game.players = game.players.filter(p => p.id !== socket.id);
             userToRoom.delete(socket.id);
 
-            console.log(`[LOBBY] Jugador ${socket.id} abandonó sala ${roomId}`);
+            console.log(`[LOBBY] Jugador ${socket.id} abandono sala ${roomId}`);
             handleGameCleanup(roomId);
         }
     });
@@ -178,11 +178,11 @@ io.on('connection', (socket) => {
         }
 
         console.log(`[GAME START] Iniciando en sala ${roomId}`);
-        console.log(`[CONFIG] Usando configuración:`, game.config);
+        console.log(`[CONFIG] Usando configuracion:`, game.config);
 
         const playerData = game.players.map(p => ({ id: p.id, name: p.name }));
         
-        // Pasar configuración al GameLogic
+        // Pasar configuracion al GameLogic
         game.gameLogic = new GameLogic(playerData, game.config);
         game.status = 'playing';
 
@@ -203,7 +203,7 @@ io.on('connection', (socket) => {
                 game.status = 'finished';
                 const finalData = game.gameLogic.getFinalScore();
                 io.to(roomId).emit('gameOver', finalData);
-                console.log(`[GAME OVER] Sala ${roomId} - Puntuación: ${finalData.finalScore}, Oleada: ${finalData.finalWave}`);
+                console.log(`[GAME OVER] Sala ${roomId} - Puntuacion: ${finalData.finalScore}, Oleada: ${finalData.finalWave}`);
                 return;
             }
 
@@ -227,7 +227,7 @@ io.on('connection', (socket) => {
         const game = activeGames.get(roomId);
 
         if (game) {
-            console.log(`[DESCONEXIÓN] Jugador ${socket.id} en sala ${roomId}`);
+            console.log(`[DESCONEXION] Jugador ${socket.id} en sala ${roomId}`);
 
             game.players = game.players.filter(p => p.id !== socket.id);
             userToRoom.delete(socket.id);
@@ -242,7 +242,7 @@ io.on('connection', (socket) => {
             userToRoom.delete(socket.id); 
         }
 
-        console.log(`[DESCONEXIÓN] Usuario: ${socket.id}`);
+        console.log(`[DESCONEXION] Usuario: ${socket.id}`);
     });
 });
 
@@ -253,12 +253,6 @@ app.get('/', (req, res) => {
 });
 
 server.listen(PORT, () => {
-    console.log(`╔═══════════════════════════════════════════╗`);
-    console.log(`║   🧟 ZOMBIE SHOOTER SERVER v3.0 🧟       ║`);
-    console.log(`╠═══════════════════════════════════════════╣`);
-    console.log(`║   Puerto: ${PORT.toString().padEnd(31)} ║`);
-    console.log(`║   Tick Rate: ${SERVER_TICK_RATE} TPS${' '.repeat(21)} ║`);
-    console.log(`║   URL: http://localhost:${PORT}${' '.repeat(14)} ║`);
-    console.log(`╚═══════════════════════════════════════════╝`);
+    console.log(`Server running on port ${PORT}`);
+    console.log(`Tick Rate: ${SERVER_TICK_RATE} TPS`);
 });
-```
