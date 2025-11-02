@@ -1,7 +1,7 @@
 /**
  * server/gameLogic.js - ACTUALIZADO
- * Corregida la lógica de seguimiento de camino (path following) para eliminar el "stutter"
- * y mejorada la detección de atascos.
+ * - Eliminada la colisión entre zombies (se pueden superponer).
+ * - Mantenida la lógica de seguimiento de camino fluida.
  */
 
 const ServerMapGenerator = require('./serverMapGenerator'); 
@@ -110,29 +110,26 @@ class ServerZombie extends ServerEntity {
         // Actualizar timer de pathfinding
         this.pathUpdateTimer += deltaTime;
 
-        // Detectar si está atascado
+        // Detectar si está atascado (contra un muro, ya no contra otros zombies)
         const movedDistance = Math.sqrt(
             (this.x - this.lastPosition.x) ** 2 + 
             (this.y - this.lastPosition.y) ** 2
         );
 
-        // *** LÓGICA DE ATASCO MEJORADA ***
-        // Comparamos la distancia movida con la velocidad esperada (por tick)
-        if (movedDistance < this.speed * 0.5) { // Si se movió menos de la mitad de lo esperado
+        if (movedDistance < this.speed * 0.5) { 
             this.stuckTimer += deltaTime;
         } else {
             this.stuckTimer = 0;
             this.lastPosition = { x: this.x, y: this.y };
         }
 
-        // Si está atascado o es momento de recalcular
+        // Si está atascado contra un muro o es momento de recalcular
         if (this.stuckTimer > 1000 || this.pathUpdateTimer > this.pathUpdateInterval || this.path.length === 0) {
             
             let goalTarget = target; // Por defecto, el jugador
 
-            // *** LÓGICA DE DESATASCO ***
+            // Lógica de desatasco (ahora solo para muros)
             if (this.stuckTimer > 1000) {
-                // console.log(`[AI] Zombie ${this.id} atascado. Buscando ruta alternativa.`);
                 const gridPos = mapGenerator.worldToGrid(this.x, this.y);
                 
                 let foundTempGoal = false;
@@ -144,7 +141,7 @@ class ServerZombie extends ServerEntity {
 
                     if (pathfinder.isValid(tempGridGoal)) {
                         const worldGoal = mapGenerator.gridToWorld(tempGridGoal.x, tempGridGoal.y);
-                        goalTarget = { x: worldGoal.x, y: worldGoal.y }; // Asignar como {x, y}
+                        goalTarget = { x: worldGoal.x, y: worldGoal.y }; 
                         foundTempGoal = true;
                         break;
                     }
@@ -153,14 +150,13 @@ class ServerZombie extends ServerEntity {
                     goalTarget = target;
                 }
             }
-            // *** FIN LÓGICA DE DESATASCO ***
             
             this.calculatePath(goalTarget, pathfinder, mapGenerator);
             this.pathUpdateTimer = 0;
             this.stuckTimer = 0;
         }
 
-        // *** LÓGICA DE MOVIMIENTO (PATH FOLLOWING) CORREGIDA ***
+        // Lógica de seguimiento de camino (fluida)
         if (this.path.length > 0) {
             const nextWaypointNode = this.path[this.currentPathIndex];
             
@@ -170,25 +166,18 @@ class ServerZombie extends ServerEntity {
                 const wpDy = waypointWorld.y - this.y;
                 const wpDist = Math.sqrt(wpDx * wpDx + wpDy * wpDy);
 
-                const moveDistance = this.speed; // Distancia a mover este tick
+                const moveDistance = this.speed; 
 
                 if (wpDist <= moveDistance) {
-                    // --- LLEGAMOS AL WAYPOINT ---
-                    // 1. Ajustar la posición exactamente al waypoint
                     this.x = waypointWorld.x;
                     this.y = waypointWorld.y;
-
-                    // 2. Avanzar al siguiente waypoint
                     this.currentPathIndex++;
                     
-                    // 3. Si era el último, limpiar el camino para recalcular
                     if (this.currentPathIndex >= this.path.length) {
                         this.path = [];
                         this.currentPathIndex = 0;
                     }
                 } else {
-                    // --- SEGUIMOS EN CAMINO ---
-                    // Si estamos lejos, moverse hacia el waypoint
                     const nx = wpDx / wpDist;
                     const ny = wpDy / wpDist;
                     this.x += nx * moveDistance;
@@ -196,7 +185,7 @@ class ServerZombie extends ServerEntity {
                 }
             }
         } else {
-            // Si no hay camino, moverse directamente (fallback)
+            // Fallback: moverse directamente
             if (distance > this.radius + target.radius) {
                 const nx = dx / distance;
                 const ny = dy / distance;
@@ -216,9 +205,8 @@ class ServerZombie extends ServerEntity {
         const path = pathfinder.findPath(startGrid, goalGrid);
         
         if (path && path.length > 1) {
-            // Suavizar el camino para movimiento más natural
             this.path = pathfinder.smoothPath(path);
-            this.currentPathIndex = 0; // Empezar desde el primer waypoint (índice 0)
+            this.currentPathIndex = 0; 
         } else {
             this.path = [];
             this.currentPathIndex = 0;
@@ -254,7 +242,7 @@ class GameLogic {
         this.running = true;
         this.lastUpdateTime = Date.now();
 
-        // Inicializar jugadores
+        // Inicializar jugadores (CON SPAWN SEGURO)
         const spawn = this.map.getSpawnPoint();
         playerData.forEach(p => {
             this.entities.players.set(p.id, new ServerPlayer(p.id, spawn.x, spawn.y, p.name, config));
@@ -271,7 +259,6 @@ class GameLogic {
         const cellSize = this.map.cellSize;
         const radius = entity.radius;
 
-        // Reducir los puntos de control para ser un poco más permisivo en esquinas
         const checkPoints = [
             { x: entity.x, y: entity.y }, // Centro
             { x: entity.x + radius, y: entity.y },
@@ -285,7 +272,7 @@ class GameLogic {
             const tileY = Math.floor(p.y / cellSize);
 
             if (p.x < 0 || p.x > this.map.worldSize || p.y < 0 || p.y > this.map.worldSize) {
-                return true; // Colisión con bordes del mundo
+                return true; 
             }
 
             if (tileY >= 0 && tileY < this.map.gridSize && tileX >= 0 && tileX < this.map.gridSize) {
@@ -298,7 +285,7 @@ class GameLogic {
     }
 
     /**
-     * Comprueba colisión entre dos entidades circulares
+     * Comprueba colisión entre dos entidades circulares (USO LIMITADO)
      */
     checkEntityCollision(entityA, entityB) {
         const dx = entityB.x - entityA.x;
@@ -311,7 +298,7 @@ class GameLogic {
 
     /**
      * Resuelve colisión entre dos entidades (empujándolas)
-     * *** AHORA CON VALIDACIÓN DE MAPA ***
+     * (Esta función ya no se usa para Z-Z, pero se mantiene por si se usa para P-Z)
      */
     resolveEntityCollision(entityA, entityB, mapChecker) {
         const dx = entityB.x - entityA.x;
@@ -319,7 +306,6 @@ class GameLogic {
         let distance = Math.sqrt(dx * dx + dy * dy);
         const minDistance = entityA.radius + entityB.radius;
         
-        // Asegurarnos de que la distancia no sea 0
         if (distance === 0) {
             distance = 0.1; 
         }
@@ -329,33 +315,27 @@ class GameLogic {
             const nx = dx / distance;
             const ny = dy / distance;
             
-            // Movimiento para cada entidad
             const moveAX = -nx * overlap * 0.5;
             const moveAY = -ny * overlap * 0.5;
             const moveBX = nx * overlap * 0.5;
             const moveBY = ny * overlap * 0.5;
     
-            // Guardar posiciones antiguas por si hay que revertir
             const oldAx = entityA.x;
             const oldAy = entityA.y;
             const oldBx = entityB.x;
             const oldBy = entityB.y;
     
-            // Aplicar movimiento "propuesto" a A
             entityA.x += moveAX;
             entityA.y += moveAY;
-            // Validar la nueva posición de entityA contra el mapa
             if (mapChecker && mapChecker.checkMapCollision(entityA)) {
-                entityA.x = oldAx; // Revertir A
+                entityA.x = oldAx; 
                 entityA.y = oldAy;
             }
     
-            // Aplicar movimiento "propuesto" a B
             entityB.x += moveBX;
             entityB.y += moveBY;
-            // Validar la nueva posición de entityB contra el mapa
             if (mapChecker && mapChecker.checkMapCollision(entityB)) {
-                entityB.x = oldBx; // Revertir B
+                entityB.x = oldBx; 
                 entityB.y = oldBy;
             }
         }
@@ -411,13 +391,11 @@ class GameLogic {
             const oldX = player.x;
             const oldY = player.y;
 
-            // Movimiento X
             player.x += player.input.moveX * player.speed;
             if (this.checkMapCollision(player)) {
                 player.x = oldX; 
             }
 
-            // Movimiento Y
             player.y += player.input.moveY * player.speed;
             if (this.checkMapCollision(player)) {
                 player.y = oldY; 
@@ -428,7 +406,7 @@ class GameLogic {
             }
         });
 
-        // 2. Actualizar Zombies con pathfinding y colisiones
+        // 2. Actualizar Zombies
         const zombieArray = Array.from(this.entities.zombies.values());
         
         zombieArray.forEach(zombie => {
@@ -441,21 +419,24 @@ class GameLogic {
             if (this.checkMapCollision(zombie)) {
                 zombie.x = oldX;
                 zombie.y = oldY;
-                // Si colisiona, invalidar su camino para recalcular
                 zombie.path = [];
-                zombie.stuckTimer = 1001; // Forzar recalculo en el siguiente frame
+                zombie.stuckTimer = 1001; // Forzar recalculo
             }
         });
 
+        // --- BLOQUE DE COLISIÓN Z-Z ELIMINADO ---
+        /*
         // Colisiones zombie-zombie (Ahora más seguras)
         for (let i = 0; i < zombieArray.length; i++) {
             for (let j = i + 1; j < zombieArray.length; j++) {
                 if (this.checkEntityCollision(zombieArray[i], zombieArray[j])) {
-                    // Pasar 'this' (gameLogic) para que pueda usar checkMapCollision
                     this.resolveEntityCollision(zombieArray[i], zombieArray[j], this); 
                 }
             }
         }
+        */
+        // --- FIN DEL BLOQUE ELIMINADO ---
+
 
         // 3. Actualizar Balas
         const bulletsToRemove = [];
