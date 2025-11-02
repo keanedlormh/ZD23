@@ -1,0 +1,289 @@
+```html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zombie Shooter Multijugador</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #222;
+            color: white;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #gameCanvas {
+            display: block;
+            border: 2px solid #555;
+            background-color: #1a1a1a; 
+            cursor: crosshair;
+        }
+
+        .menu-container {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.95);
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.7);
+            max-width: 500px;
+            max-height: 90vh;
+            width: 90%;
+            z-index: 1000;
+            overflow-y: auto;
+        }
+
+        input, button, select {
+            padding: 10px;
+            margin: 8px 0;
+            border-radius: 5px;
+            border: none;
+            width: 100%;
+            box-sizing: border-box;
+            font-weight: bold;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        button:hover:not(:disabled) {
+            background-color: #45a049;
+        }
+
+        button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+
+        #joinGameButton, #settingsButton {
+            background-color: #336699;
+        }
+        #joinGameButton:hover:not(:disabled), #settingsButton:hover:not(:disabled) {
+            background-color: #2a527c;
+        }
+
+        #lobbyPlayerList {
+            list-style: none;
+            padding: 0;
+            margin-top: 15px;
+            text-align: left;
+        }
+
+        #lobbyPlayerList li {
+            padding: 5px 0;
+            border-bottom: 1px dashed #444;
+        }
+
+        .settings-group {
+            margin: 15px 0;
+            padding: 15px;
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 5px;
+            text-align: left;
+        }
+
+        .settings-group h3 {
+            margin-top: 0;
+            color: #4CAF50;
+            font-size: 16px;
+        }
+
+        .setting-item {
+            margin: 10px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .setting-item label {
+            flex: 1;
+            font-size: 14px;
+        }
+
+        .setting-item input[type="number"],
+        .setting-item select {
+            width: 80px;
+            padding: 5px;
+            margin: 0;
+        }
+
+        .preset-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .preset-buttons button {
+            flex: 1;
+            font-size: 12px;
+            padding: 8px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="gameScreen">
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <div id="menuScreen" class="menu-container">
+        <h2>Zombie Shooter</h2>
+
+        <input type="text" id="playerNameInput" placeholder="Introduce tu nombre" maxlength="15" value="Player1">
+
+        <button id="createGameButton">Crear Partida</button>
+
+        <hr style="border-color: #555; margin: 15px 0;">
+
+        <input type="text" id="roomIdInput" placeholder="ID de Sala (EJ: ABCD)" maxlength="4" style="text-transform: uppercase;">
+        <button id="joinGameButton">Unirse a Partida</button>
+
+        <hr style="border-color: #555; margin: 15px 0;">
+
+        <button id="settingsButton">⚙️ Configuración del Juego</button>
+    </div>
+
+    <div id="settingsScreen" class="menu-container" style="display: none;">
+        <h2>⚙️ Configuración del Juego</h2>
+
+        <div class="preset-buttons">
+            <button onclick="applyPreset('easy')" style="background-color: #4CAF50;">Fácil</button>
+            <button onclick="applyPreset('normal')" style="background-color: #FF9800;">Normal</button>
+            <button onclick="applyPreset('hard')" style="background-color: #F44336;">Difícil</button>
+        </div>
+
+        <div class="settings-group">
+            <h3>🎮 Jugador</h3>
+            <div class="setting-item">
+                <label>Vida Máxima:</label>
+                <input type="number" id="setting_playerHealth" min="50" max="300" value="100">
+            </div>
+            <div class="setting-item">
+                <label>Velocidad:</label>
+                <input type="number" id="setting_playerSpeed" min="3" max="12" value="6" step="0.5">
+            </div>
+            <div class="setting-item">
+                <label>Cooldown Disparo (ms):</label>
+                <input type="number" id="setting_shootCooldown" min="50" max="500" value="150" step="10">
+            </div>
+        </div>
+
+        <div class="settings-group">
+            <h3>🧟 Zombies</h3>
+            <div class="setting-item">
+                <label>Vida Máxima:</label>
+                <input type="number" id="setting_zombieHealth" min="10" max="100" value="30">
+            </div>
+            <div class="setting-item">
+                <label>Velocidad:</label>
+                <input type="number" id="setting_zombieSpeed" min="1" max="8" value="3" step="0.5">
+            </div>
+            <div class="setting-item">
+                <label>Daño de Ataque:</label>
+                <input type="number" id="setting_zombieAttack" min="5" max="50" value="10">
+            </div>
+            <div class="setting-item">
+                <label>Cooldown Ataque (ms):</label>
+                <input type="number" id="setting_zombieAttackCooldown" min="500" max="3000" value="1000" step="100">
+            </div>
+        </div>
+
+        <div class="settings-group">
+            <h3>💥 Combate</h3>
+            <div class="setting-item">
+                <label>Daño de Bala:</label>
+                <input type="number" id="setting_bulletDamage" min="5" max="50" value="10">
+            </div>
+            <div class="setting-item">
+                <label>Velocidad de Bala:</label>
+                <input type="number" id="setting_bulletSpeed" min="10" max="40" value="25">
+            </div>
+        </div>
+
+        <div class="settings-group">
+            <h3>🗺️ Mapa</h3>
+            <div class="setting-item">
+                <label>Tamaño del Mapa:</label>
+                <select id="setting_mapSize">
+                    <option value="40">Pequeño (40x40)</option>
+                    <option value="60" selected>Mediano (60x60)</option>
+                    <option value="80">Grande (80x80)</option>
+                </select>
+            </div>
+            <div class="setting-item">
+                <label>Número de Salas:</label>
+                <input type="number" id="setting_roomCount" min="3" max="12" value="6">
+            </div>
+            <div class="setting-item">
+                <label>Ancho de Pasillos:</label>
+                <select id="setting_corridorWidth">
+                    <option value="2">Estrecho (2)</option>
+                    <option value="3" selected>Medio (3)</option>
+                    <option value="4">Ancho (4)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="settings-group">
+            <h3>🌊 Oleadas</h3>
+            <div class="setting-item">
+                <label>Zombies Iniciales:</label>
+                <input type="number" id="setting_initialZombies" min="3" max="20" value="5">
+            </div>
+            <div class="setting-item">
+                <label>Multiplicador Oleada:</label>
+                <input type="number" id="setting_waveMultiplier" min="1" max="5" value="3" step="0.5">
+            </div>
+        </div>
+
+        <hr style="border-color: #555; margin: 15px 0;">
+
+        <button id="saveSettingsButton">💾 Guardar y Volver</button>
+        <button id="resetSettingsButton" style="background-color: #993333;">↺ Restaurar Defaults</button>
+    </div>
+
+    <div id="lobbyScreen" class="menu-container" style="display: none;">
+        <h2>Sala de Espera</h2>
+        <p id="lobbyRoomId" style="font-weight: bold;"></p>
+
+        <h3>Jugadores:</h3>
+        <ul id="lobbyPlayerList"></ul>
+
+        <div id="hostConfigInfo" style="display: none; margin: 15px 0; padding: 10px; background-color: rgba(76, 175, 80, 0.2); border-radius: 5px; font-size: 12px;">
+            <strong>⚙️ Configuración Activa:</strong>
+            <div id="configSummary" style="margin-top: 5px;"></div>
+        </div>
+
+        <hr style="border-color: #555; margin: 15px 0;">
+
+        <button id="startButton">Iniciar Partida</button>
+        <button id="backToMenuButton" style="background-color: #993333;">Volver al Menú</button>
+    </div>
+
+    <div id="gameOverScreen" class="menu-container" style="display: none;">
+        <h2>¡GAME OVER!</h2>
+        <p>Puntuación Final: <span id="finalScore" style="font-weight: bold;">0</span></p>
+        <p>Oleada Alcanzada: <span id="finalWave" style="font-weight: bold;">1</span></p>
+
+        <button onclick="window.location.reload()" style="background-color: #336699;">Jugar de Nuevo</button>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script> 
+    <script src="js/entities.js"></script>
+    <script src="js/game.js"></script>
+
+</body>
+</html>
+```
