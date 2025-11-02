@@ -1,6 +1,7 @@
 /**
  * server/serverMapGenerator.js - ACTUALIZADO
  * Generador de mapas procedurales con salas conectadas por pasillos laberínticos
+ * **CORREGIDO EL FALLBACK DE GETSPAWNPOINT**
  */
 
 class ServerMapGenerator {
@@ -172,22 +173,36 @@ class ServerMapGenerator {
 
     /**
      * Obtiene el punto de spawn (centro de la primera sala)
+     * *** LÓGICA DE FALLBACK MEJORADA ***
      */
     getSpawnPoint() {
         if (this.rooms.length > 0) {
             const room = this.rooms[0];
-            return {
-                x: (room.x + room.w / 2) * this.cellSize,
-                y: (room.y + room.h / 2) * this.cellSize
-            };
+            const gridX = Math.floor(room.x + room.w / 2);
+            const gridY = Math.floor(room.y + room.h / 2);
+
+            // Comprobación de seguridad: ¿es transitable?
+            if (this.map[gridY] && this.map[gridY][gridX] === 0) {
+                return this.gridToWorld(gridX, gridY);
+            }
+            // Si el centro de la sala 0 falla, se usará el fallback de abajo
         }
         
-        // Fallback al centro del mapa
-        const center = Math.floor(this.gridSize / 2);
-        return {
-            x: center * this.cellSize + this.cellSize / 2,
-            y: center * this.cellSize + this.cellSize / 2
-        };
+        // --- NUEVO FALLBACK SEGURO ---
+        // Si no hay salas o la sala 0 es extraña,
+        // busca la PRIMERA celda transitable que encuentre.
+        console.warn("[MapGen] No se pudo encontrar el centro de la Sala 0. Buscando primera celda transitable...");
+        for (let y = 1; y < this.gridSize - 1; y++) {
+            for (let x = 1; x < this.gridSize - 1; x++) {
+                if (this.map[y][x] === 0) { // 0 = transitable
+                    return this.gridToWorld(x, y);
+                }
+            }
+        }
+
+        // Fallback de último recurso (si el mapa está completamente sólido)
+        console.error("[MapGen] ¡No se encontró NINGUNA celda transitable!");
+        return { x: this.cellSize, y: this.cellSize }; // (1,1) en coords del mundo
     }
 
     /**
@@ -195,16 +210,15 @@ class ServerMapGenerator {
      */
     getRandomOpenCellPosition() {
         // Intentar primero obtener una posición de una sala aleatoria
-        if (this.rooms.length > 0 && Math.random() < 0.7) {
-            const room = this.rooms[Math.floor(Math.random() * this.rooms.length)];
+        // (Evitar la sala 0, que es la del jugador)
+        if (this.rooms.length > 1) {
+            const roomIndex = 1 + Math.floor(Math.random() * (this.rooms.length - 1));
+            const room = this.rooms[roomIndex];
             const x = room.x + 1 + Math.floor(Math.random() * (room.w - 2));
             const y = room.y + 1 + Math.floor(Math.random() * (room.h - 2));
             
             if (this.map[y][x] === 0) {
-                return {
-                    x: x * this.cellSize + this.cellSize / 2,
-                    y: y * this.cellSize + this.cellSize / 2
-                };
+                return this.gridToWorld(x, y);
             }
         }
         
@@ -217,16 +231,15 @@ class ServerMapGenerator {
             const y = Math.floor(Math.random() * this.gridSize);
             
             if (this.map[y][x] === 0) {
-                return {
-                    x: x * this.cellSize + this.cellSize / 2,
-                    y: y * this.cellSize + this.cellSize / 2
-                };
+                return this.gridToWorld(x, y);
             }
             attempts++;
         }
         
-        return this.getSpawnPoint(); // Fallback
+        // Fallback: getSpawnPoint() ahora es seguro
+        return this.getSpawnPoint();
     }
+
 
     /**
      * Genera un grid de navegación para pathfinding
@@ -235,6 +248,7 @@ class ServerMapGenerator {
     getNavigationGrid() {
         return this.map.map(row => [...row]);
     }
+
 
     /**
      * Convierte coordenadas del mundo a coordenadas de grid
@@ -245,6 +259,7 @@ class ServerMapGenerator {
             y: Math.floor(worldY / this.cellSize)
         };
     }
+
 
     /**
      * Convierte coordenadas de grid a coordenadas del mundo (centro de la celda)
