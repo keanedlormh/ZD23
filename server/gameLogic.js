@@ -102,7 +102,7 @@ class ServerZombie extends ServerEntity {
             if (currentTime - this.lastAttackTime > this.attackCooldown) {
                 target.health = Math.max(0, target.health - this.attackDamage);
                 this.lastAttackTime = currentTime;
-                console.log(`[GAME] Jugador ${target.id} golpeado. Vida: ${target.health}`);
+                // console.log(`[GAME] Jugador ${target.id} golpeado. Vida: ${target.health}`);
             }
             return;
         }
@@ -431,7 +431,7 @@ class GameLogic {
             this.score += 100 * this.wave;
             const zombieCount = Math.floor(this.wave * this.config.waveMultiplier + this.config.initialZombies);
             this.spawnZombies(zombieCount);
-            console.log(`[SERVER] Iniciando oleada ${this.wave} con ${zombieCount} zombies`);
+            // console.log(`[SERVER] Iniciando oleada ${this.wave} con ${zombieCount} zombies`);
         }
     }
 
