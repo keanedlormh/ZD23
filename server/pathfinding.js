@@ -1,6 +1,10 @@
 /**
  * server/pathfinding.js - NUEVO ARCHIVO
  * Implementación del algoritmo A* para navegación de zombies
+ *
+ * *** ACTUALIZADO: Se eliminaron las funciones 'smoothPath' y 'hasLineOfSight'
+ * ya que causaban un movimiento de "zigzag" al crear atajos angulares.
+ * Ahora solo se usa el camino puro de A* (basado en la cuadrícula).
  */
 
 class PriorityQueue {
@@ -172,61 +176,10 @@ class Pathfinder {
      * Verifica si una posición es válida y transitable
      */
     isValid(pos) {
+        if (!pos) return false;
         return pos.x >= 0 && pos.x < this.cols &&
                pos.y >= 0 && pos.y < this.rows &&
                this.grid[pos.y][pos.x] === 0;
-    }
-
-    /**
-     * Simplifica el camino eliminando puntos innecesarios (optimización)
-     */
-    smoothPath(path) {
-        if (!path || path.length <= 2) {
-            return path;
-        }
-
-        const smoothed = [path[0]];
-        let current = 0;
-
-        while (current < path.length - 1) {
-            let farthest = current + 1;
-
-            // Encontrar el punto más lejano visible desde la posición actual
-            for (let i = current + 2; i < path.length; i++) {
-                if (this.hasLineOfSight(path[current], path[i])) {
-                    farthest = i;
-                } else {
-                    break;
-                }
-            }
-
-            smoothed.push(path[farthest]);
-            current = farthest;
-        }
-
-        return smoothed;
-    }
-
-    /**
-     * Verifica si hay línea de visión entre dos puntos (sin muros)
-     */
-    hasLineOfSight(from, to) {
-        const dx = to.x - from.x;
-        const dy = to.y - from.y;
-        const steps = Math.max(Math.abs(dx), Math.abs(dy));
-
-        if (steps === 0) return true;
-
-        for (let i = 1; i <= steps; i++) {
-            const x = Math.round(from.x + (dx * i) / steps);
-            const y = Math.round(from.y + (dy * i) / steps);
-
-            if (!this.isValid({ x, y })) {
-                return false;
-            }
-        }
-
-        return true;
     }
 }
 
