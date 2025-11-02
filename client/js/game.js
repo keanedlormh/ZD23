@@ -644,7 +644,7 @@ function updateLobbyDisplay() {
 // --- SOCKET.IO LISTENERS ---
 socket.on('connect', () => {
     clientState.me.id = socket.id;
-    console.log(`[CLIENTE] Conectado: ${socket.id}`);
+    // console.log(`[CLIENTE] Conectado: ${socket.id}`);
 });
 
 socket.on('gameCreated', (game) => {
@@ -713,7 +713,7 @@ socket.on('gameEnded', () => {
 });
 
 socket.on('playerDisconnected', (playerId) => {
-    console.log(`Jugador desconectado: ${playerId}`);
+    // console.log(`Jugador desconectado: ${playerId}`);
 });
 
 // --- LISTENERS DE BOTONES ---
