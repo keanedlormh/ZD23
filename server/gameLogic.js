@@ -66,7 +66,7 @@ class ServerZombie extends ServerEntity {
     }
 
     /**
-     * IA mejorada con pathfinding
+     * IA mejorada con pathfinding y lógica de desatasco
      */
     updateAI(players, pathfinder, mapGenerator, deltaTime) {
         if (players.size === 0) return;
@@ -101,7 +101,7 @@ class ServerZombie extends ServerEntity {
             if (currentTime - this.lastAttackTime > this.attackCooldown) {
                 target.health = Math.max(0, target.health - this.attackDamage);
                 this.lastAttackTime = currentTime;
-                console.log(`[GAME] Jugador ${target.id} golpeado. Vida: ${target.health}`);
+                // console.log(`[GAME] Jugador ${target.id} golpeado. Vida: ${target.health}`);
             }
             return;
         }
@@ -115,7 +115,7 @@ class ServerZombie extends ServerEntity {
             (this.y - this.lastPosition.y) ** 2
         );
 
-        if (movedDistance < 1) {
+        if (movedDistance < (this.speed * (deltaTime / 1000)) * 0.5) { // Si se movió menos de la mitad de lo esperado
             this.stuckTimer += deltaTime;
         } else {
             this.stuckTimer = 0;
@@ -124,7 +124,39 @@ class ServerZombie extends ServerEntity {
 
         // Si está atascado o es momento de recalcular
         if (this.stuckTimer > 1000 || this.pathUpdateTimer > this.pathUpdateInterval || this.path.length === 0) {
-            this.calculatePath(target, pathfinder, mapGenerator);
+            
+            let goalTarget = target; // Por defecto, el jugador
+
+            // *** NUEVA LÓGICA DE DESATASCO ***
+            // Si se atascó (probablemente por otro zombie)
+            if (this.stuckTimer > 1000) {
+                // console.log(`[AI] Zombie ${this.id} atascado. Buscando ruta alternativa.`);
+                const gridPos = mapGenerator.worldToGrid(this.x, this.y);
+                
+                let foundTempGoal = false;
+                // Intentar 5 veces encontrar un punto cercano válido
+                for (let i = 0; i < 5; i++) {
+                    // Rango de -3 a +3
+                    const randomDir = { x: Math.floor(Math.random() * 7) - 3, y: Math.floor(Math.random() * 7) - 3 }; 
+                    if (randomDir.x === 0 && randomDir.y === 0) continue; // No elegir el mismo sitio
+
+                    const tempGridGoal = { x: gridPos.x + randomDir.x, y: gridPos.y + randomDir.y };
+
+                    if (pathfinder.isValid(tempGridGoal)) {
+                        const worldGoal = mapGenerator.gridToWorld(tempGridGoal.x, tempGridGoal.y);
+                        goalTarget = { x: worldGoal.x, y: worldGoal.y }; // Asignar como {x, y}
+                        foundTempGoal = true;
+                        break;
+                    }
+                }
+                if (!foundTempGoal) {
+                    // No se encontró, seguir al jugador (fallback)
+                    goalTarget = target;
+                }
+            }
+            // *** FIN LÓGICA DE DESATASCO ***
+            
+            this.calculatePath(goalTarget, pathfinder, mapGenerator);
             this.pathUpdateTimer = 0;
             this.stuckTimer = 0;
         }
@@ -140,7 +172,7 @@ class ServerZombie extends ServerEntity {
                 const wpDist = Math.sqrt(wpDx * wpDx + wpDy * wpDy);
 
                 // Si llegamos al waypoint, pasar al siguiente
-                if (wpDist < this.speed * 2) {
+                if (wpDist < this.speed) {
                     this.currentPathIndex++;
                     
                     // Si terminamos el camino, recalcular
@@ -179,7 +211,7 @@ class ServerZombie extends ServerEntity {
         if (path && path.length > 1) {
             // Suavizar el camino para movimiento más natural
             this.path = pathfinder.smoothPath(path);
-            this.currentPathIndex = 0;
+            this.currentPathIndex = 0; // Empezar desde el primer waypoint (índice 0)
         } else {
             this.path = [];
             this.currentPathIndex = 0;
@@ -232,16 +264,14 @@ class GameLogic {
         const cellSize = this.map.cellSize;
         const radius = entity.radius;
 
+        // Reducir los puntos de control para ser un poco más permisivo en esquinas
         const checkPoints = [
-            { x: entity.x, y: entity.y },
+            { x: entity.x, y: entity.y }, // Centro
             { x: entity.x + radius, y: entity.y },
             { x: entity.x - radius, y: entity.y },
             { x: entity.x, y: entity.y + radius },
-            { x: entity.x, y: entity.y - radius },
-            { x: entity.x + radius * 0.7, y: entity.y + radius * 0.7 }, 
-            { x: entity.x - radius * 0.7, y: entity.y - radius * 0.7 },
-            { x: entity.x + radius * 0.7, y: entity.y - radius * 0.7 },
-            { x: entity.x - radius * 0.7, y: entity.y + radius * 0.7 }
+            { x: entity.x, y: entity.y - radius }
+            // Quitar los puntos diagonales puede ayudar con los atascos en esquinas
         ];
 
         for (const p of checkPoints) {
@@ -249,11 +279,11 @@ class GameLogic {
             const tileY = Math.floor(p.y / cellSize);
 
             if (p.x < 0 || p.x > this.map.worldSize || p.y < 0 || p.y > this.map.worldSize) {
-                return true;
+                return true; // Colisión con bordes del mundo
             }
 
             if (tileY >= 0 && tileY < this.map.gridSize && tileX >= 0 && tileX < this.map.gridSize) {
-                if (this.map.map[tileY][tileX] === 1) {
+                if (this.map.map[tileY][tileX] === 1) { // 1 es muro
                     return true;
                 }
             }
@@ -275,23 +305,53 @@ class GameLogic {
 
     /**
      * Resuelve colisión entre dos entidades (empujándolas)
+     * *** AHORA CON VALIDACIÓN DE MAPA ***
      */
-    resolveEntityCollision(entityA, entityB) {
+    resolveEntityCollision(entityA, entityB, mapChecker) {
         const dx = entityB.x - entityA.x;
         const dy = entityB.y - entityA.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
+        let distance = Math.sqrt(dx * dx + dy * dy);
         const minDistance = entityA.radius + entityB.radius;
         
-        if (distance < minDistance && distance > 0) {
+        // Asegurarnos de que la distancia no sea 0
+        if (distance === 0) {
+            distance = 0.1; 
+        }
+
+        if (distance < minDistance) {
             const overlap = minDistance - distance;
             const nx = dx / distance;
             const ny = dy / distance;
             
-            // Empujar ambas entidades en direcciones opuestas
-            entityA.x -= nx * overlap * 0.5;
-            entityA.y -= ny * overlap * 0.5;
-            entityB.x += nx * overlap * 0.5;
-            entityB.y += ny * overlap * 0.5;
+            // Movimiento para cada entidad
+            const moveAX = -nx * overlap * 0.5;
+            const moveAY = -ny * overlap * 0.5;
+            const moveBX = nx * overlap * 0.5;
+            const moveBY = ny * overlap * 0.5;
+    
+            // Guardar posiciones antiguas por si hay que revertir
+            const oldAx = entityA.x;
+            const oldAy = entityA.y;
+            const oldBx = entityB.x;
+            const oldBy = entityB.y;
+    
+            // Aplicar movimiento "propuesto" a A
+            entityA.x += moveAX;
+            entityA.y += moveAY;
+            // Validar la nueva posición de entityA contra el mapa
+            if (mapChecker && mapChecker.checkMapCollision(entityA)) {
+                entityA.x = oldAx; // Revertir A
+                entityA.y = oldAy;
+            }
+    
+            // Aplicar movimiento "propuesto" a B
+            entityB.x += moveBX;
+            entityB.y += moveBY;
+            // Validar la nueva posición de entityB contra el mapa
+            if (mapChecker && mapChecker.checkMapCollision(entityB)) {
+                entityB.x = oldBx; // Revertir B
+                entityB.y = oldBy;
+            }
         }
     }
 
@@ -345,11 +405,13 @@ class GameLogic {
             const oldX = player.x;
             const oldY = player.y;
 
+            // Movimiento X
             player.x += player.input.moveX * player.speed;
             if (this.checkMapCollision(player)) {
                 player.x = oldX; 
             }
 
+            // Movimiento Y
             player.y += player.input.moveY * player.speed;
             if (this.checkMapCollision(player)) {
                 player.y = oldY; 
@@ -369,20 +431,22 @@ class GameLogic {
 
             zombie.updateAI(this.entities.players, this.pathfinder, this.map, deltaTime);
             
-            // Colisión con mapa
+            // Colisión con mapa (simple)
             if (this.checkMapCollision(zombie)) {
                 zombie.x = oldX;
                 zombie.y = oldY;
                 // Si colisiona, invalidar su camino para recalcular
                 zombie.path = [];
+                zombie.stuckTimer = 1001; // Forzar recalculo en el siguiente frame
             }
         });
 
-        // Colisiones zombie-zombie
+        // Colisiones zombie-zombie (Ahora más seguras)
         for (let i = 0; i < zombieArray.length; i++) {
             for (let j = i + 1; j < zombieArray.length; j++) {
                 if (this.checkEntityCollision(zombieArray[i], zombieArray[j])) {
-                    this.resolveEntityCollision(zombieArray[i], zombieArray[j]);
+                    // Pasar 'this' (gameLogic) para que pueda usar checkMapCollision
+                    this.resolveEntityCollision(zombieArray[i], zombieArray[j], this); 
                 }
             }
         }
@@ -425,7 +489,7 @@ class GameLogic {
         zombiesToRemove.forEach(id => this.entities.zombies.delete(id));
 
         // 4. Lógica de Oleadas
-        if (this.entities.zombies.size === 0) {
+        if (this.entities.zombies.size === 0 && this.running) {
             this.wave++;
             this.score += 100 * this.wave;
             const zombieCount = Math.floor(this.wave * this.config.waveMultiplier + this.config.initialZombies);
@@ -475,8 +539,13 @@ class GameLogic {
     }
 
     isGameOver() {
+        if (!this.running) return false;
         const activePlayers = Array.from(this.entities.players.values()).filter(p => p.health > 0);
-        return activePlayers.length === 0 && this.entities.players.size > 0;
+        const isOver = activePlayers.length === 0 && this.entities.players.size > 0;
+        if (isOver) {
+            this.running = false;
+        }
+        return isOver;
     }
 
     getFinalScore() {
