@@ -1,4 +1,3 @@
-```javascript
 /**
  * server/pathfinding.js - NUEVO ARCHIVO
  * Implementación del algoritmo A* para navegación de zombies
@@ -232,4 +231,3 @@ class Pathfinder {
 }
 
 module.exports = Pathfinder;
-```
