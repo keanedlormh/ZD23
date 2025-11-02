@@ -40,12 +40,19 @@
             box-shadow: 0 0 25px rgba(76, 175, 80, 0.3);
             
             padding: 30px;
-            text-align: center;
+            
+            /* --- MEJORAS DE RESPONSIVE --- */
+            display: flex;            /* Forzar layout en columna */
+            flex-direction: column;   /* Apilado vertical */
+            align-items: stretch;     /* Estirar elementos al 100% de ancho */
+            /* --------------------------- */
+            
             max-width: 500px;
             max-height: 90vh;
             width: 90%;
             z-index: 1000;
             overflow-y: auto;
+            box-sizing: border-box; /* Asegura que el padding se incluya en el width */
         }
 
         /* Títulos de Menú */
@@ -57,6 +64,7 @@
             margin-top: 0;
             margin-bottom: 25px;
             text-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+            text-align: center; /* Asegurar centrado en el layout flex */
         }
 
         /* Separadores */
@@ -64,6 +72,7 @@
             border: 0;
             border-top: 1px solid #444;
             margin: 20px 0;
+            width: 100%; /* Asegurar que ocupe todo el ancho */
         }
 
         /* --- ESTILOS DE INPUTS Y BOTONES --- */
@@ -155,11 +164,10 @@
         /* --- LOBBY --- */
         #lobbyPlayerList {
             list-style: none;
-            padding: 0;
+            padding: 10px;
             margin-top: 15px;
             text-align: left;
             background-color: rgba(0, 0, 0, 0.2);
-            padding: 10px;
             border-radius: 5px;
             min-height: 100px;
         }
@@ -177,6 +185,7 @@
             font-weight: 700;
             font-size: 1.2em;
             color: #eee;
+            text-align: center; /* Asegurar centrado */
         }
 
         #hostConfigInfo {
@@ -229,6 +238,41 @@
         .preset-buttons button {
             font-size: 1em;
             padding: 10px;
+        }
+
+
+        /* --- MEDIA QUERY PARA MÓVILES --- */
+        @media (max-width: 600px) {
+            .menu-container {
+                padding: 20px; /* Reducir padding */
+                width: 95%;   /* Usar casi todo el ancho */
+            }
+
+            .menu-container h2 {
+                font-size: 1.8em; /* Reducir título */
+                margin-bottom: 20px;
+            }
+
+            button, input[type="text"], input[type="number"], select {
+                padding: 10px; /* Reducir padding de botones/inputs */
+                font-size: 1em;
+            }
+
+            .preset-buttons {
+                grid-template-columns: 1fr; /* Apilar botones de presets */
+            }
+
+            .setting-item {
+                flex-direction: column; /* Apilar items de ajustes */
+                align-items: flex-start;
+            }
+            .setting-item label {
+                margin-bottom: 5px;
+            }
+            .setting-item input[type="number"],
+            .setting-item select {
+                width: 100%; /* Ancho completo para inputs */
+            }
         }
 
     </style>
