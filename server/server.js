@@ -256,3 +256,4 @@ server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Tick Rate: ${SERVER_TICK_RATE} TPS`);
 });
+```
