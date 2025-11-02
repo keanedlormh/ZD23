@@ -1,4 +1,3 @@
-```javascript
 /**
  * server/serverMapGenerator.js - ACTUALIZADO
  * Generador de mapas procedurales con salas conectadas por pasillos laberínticos
@@ -259,4 +258,3 @@ class ServerMapGenerator {
 }
 
 module.exports = ServerMapGenerator;
-```
