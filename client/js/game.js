@@ -1,6 +1,8 @@
 /**
  * client/js/game.js - ACTUALIZADO
- * Incluye sistema de configuración y mejoras en la gestión del juego
+ * - Añadido un minimapa en la esquina superior derecha.
+ * - Creada una función 'createMinimapBackground' para eficiencia.
+ * - 'drawHUD' ahora también llama a 'drawMinimap'.
  */
 
 const socket = io();
@@ -132,6 +134,7 @@ window.applyPreset = function(preset) {
     applyConfigToUI();
 };
 
+
 // Generar resumen de configuración
 function getConfigSummary() {
     return `
@@ -141,15 +144,18 @@ function getConfigSummary() {
     `;
 }
 
+
 // --- CONFIGURACIÓN DE JOYSTICK TÁCTIL ---
 const JOYSTICK_RADIUS = 70;
 const KNOB_RADIUS = 30;
+
 
 const touchState = {
     isTouchDevice: 'ontouchstart' in window || navigator.maxTouchPoints > 0,
     move: { active: false, id: null, centerX: 0, centerY: 0, currentX: 0, currentY: 0 },
     aim: { active: false, id: null, centerX: 0, centerY: 0, currentX: 0, currentY: 0 }
 };
+
 
 // Estado del juego en el cliente
 const clientState = {
@@ -168,6 +174,7 @@ const clientState = {
         zombies: new Map()
     },
     mapRenderer: null,
+    minimapCanvas: null, // Canvas de fondo para el minimapa
     input: {
         moveX: 0, moveY: 0,
         shootX: 1, shootY: 0,
@@ -175,18 +182,22 @@ const clientState = {
     }
 };
 
+
 let lastRenderTime = 0;
 let animationFrameId = null;
+
 
 function lerp(start, end, amount) {
     return start + (end - start) * amount;
 }
+
 
 function sendInputToServer() {
     const moveLength = Math.sqrt(clientState.input.moveX ** 2 + clientState.input.moveY ** 2);
     let n_moveX = clientState.input.moveX;
     let n_moveY = clientState.input.moveY;
     if (moveLength > 1) { n_moveX /= moveLength; n_moveY /= moveLength; }
+
 
     socket.emit('playerInput', {
         moveX: n_moveX,
@@ -197,6 +208,7 @@ function sendInputToServer() {
     });
 }
 
+
 // --- MOVIMIENTO Y PUNTERÍA (TECLADO/RATÓN) ---
 if (!touchState.isTouchDevice) {
     const moveKeys = {
@@ -204,6 +216,7 @@ if (!touchState.isTouchDevice) {
         'a': { dx: -1 }, 'd': { dx: 1 },
     };
     const keysPressed = new Set();
+
 
     document.addEventListener('keydown', (e) => {
         if (clientState.currentState !== 'playing') return;
@@ -215,6 +228,7 @@ if (!touchState.isTouchDevice) {
         }
     });
 
+
     document.addEventListener('keyup', (e) => {
         if (clientState.currentState !== 'playing') return;
         const key = e.key.toLowerCase();
@@ -223,6 +237,7 @@ if (!touchState.isTouchDevice) {
             updateMoveInput();
         }
     });
+
 
     function updateMoveInput() {
         let moveX = 0;
@@ -235,23 +250,29 @@ if (!touchState.isTouchDevice) {
         clientState.input.moveY = moveY;
     }
 
+
     function calculateAimVector(e) {
         if (clientState.currentState !== 'playing') return;
+
 
         const rect = canvas.getBoundingClientRect();
         const mouseX = e.clientX - rect.left; 
         const mouseY = e.clientY - rect.top;
 
+
         const playerScreenX = canvas.width / 2;
         const playerScreenY = canvas.height / 2;
 
+
         let shootX = mouseX - playerScreenX;
         let shootY = mouseY - playerScreenY;
+
 
         const length = Math.sqrt(shootX ** 2 + shootY ** 2);
         if (length > 0.1) { 
             clientState.input.shootX = shootX / length;
             clientState.input.shootY = shootY / length;
+
 
             const me = clientState.interpolatedEntities.players.get(clientState.me.id);
             if (me) {
@@ -261,7 +282,9 @@ if (!touchState.isTouchDevice) {
         }
     }
 
+
     canvas.addEventListener('mousemove', calculateAimVector);
+
 
     canvas.addEventListener('mousedown', (e) => {
         if (clientState.currentState !== 'playing') return;
@@ -269,6 +292,7 @@ if (!touchState.isTouchDevice) {
             clientState.input.isShooting = true;
         }
     });
+
 
     canvas.addEventListener('mouseup', (e) => {
         if (clientState.currentState !== 'playing') return;
@@ -278,16 +302,19 @@ if (!touchState.isTouchDevice) {
     });
 }
 
+
 // --- LÓGICA TÁCTIL (JOYSTICKS) ---
 if (touchState.isTouchDevice) {
     canvas.addEventListener('touchstart', (e) => {
         if (clientState.currentState !== 'playing') return;
         e.preventDefault();
 
+
         Array.from(e.changedTouches).forEach(touch => {
             const screenX = touch.clientX;
             const screenY = touch.clientY;
             const isLeftHalf = screenX < canvas.width * 0.5;
+
 
             if (isLeftHalf && !touchState.move.active) {
                 const move = touchState.move;
@@ -310,13 +337,16 @@ if (touchState.isTouchDevice) {
         });
     });
 
+
     canvas.addEventListener('touchmove', (e) => {
         if (clientState.currentState !== 'playing') return;
         e.preventDefault();
 
+
         Array.from(e.changedTouches).forEach(touch => {
             const screenX = touch.clientX;
             const screenY = touch.clientY;
+
 
             if (touchState.move.active && touch.identifier === touchState.move.id) {
                 const move = touchState.move;
@@ -324,10 +354,12 @@ if (touchState.isTouchDevice) {
                 let dy = screenY - move.centerY;
                 const distance = Math.sqrt(dx * dx + dy * dy);
 
+
                 if (distance > JOYSTICK_RADIUS) {
                     dx *= JOYSTICK_RADIUS / distance;
                     dy *= JOYSTICK_RADIUS / distance;
                 }
+
 
                 move.currentX = move.centerX + dx;
                 move.currentY = move.centerY + dy;
@@ -340,17 +372,21 @@ if (touchState.isTouchDevice) {
                 let dy = screenY - aim.centerY;
                 const distance = Math.sqrt(dx * dx + dy * dy);
 
+
                 if (distance > JOYSTICK_RADIUS) {
                     dx *= JOYSTICK_RADIUS / distance;
                     dy *= JOYSTICK_RADIUS / distance;
                 }
 
+
                 aim.currentX = aim.centerX + dx;
                 aim.currentY = aim.centerY + dy;
+
 
                 if (distance > KNOB_RADIUS / 2) { 
                     clientState.input.shootX = dx / distance;
                     clientState.input.shootY = dy / distance;
+
 
                     const me = clientState.interpolatedEntities.players.get(clientState.me.id);
                     if (me) {
@@ -362,9 +398,11 @@ if (touchState.isTouchDevice) {
         });
     });
 
+
     canvas.addEventListener('touchend', (e) => {
         if (clientState.currentState !== 'playing') return;
         e.preventDefault();
+
 
         Array.from(e.changedTouches).forEach(touch => {
             if (touchState.move.active && touch.identifier === touchState.move.id) {
@@ -382,6 +420,7 @@ if (touchState.isTouchDevice) {
     });
 }
 
+
 // --- RENDERIZADO ---
 function gameLoopRender(timestamp) {
     if (clientState.currentState === 'playing') {
@@ -389,24 +428,29 @@ function gameLoopRender(timestamp) {
         const timeSinceLastSnapshot = timestamp - lastRenderTime;
         const interpolationFactor = Math.min(1, timeSinceLastSnapshot / serverSnapshotTime);
 
+
         interpolateEntities(interpolationFactor);
         drawGame(timeSinceLastSnapshot);
         sendInputToServer();
     }
 
+
     lastRenderTime = timestamp;
     animationFrameId = requestAnimationFrame(gameLoopRender);
 }
+
 
 function interpolateEntities(factor) {
     const { serverSnapshot, interpolatedEntities } = clientState;
     const serverPlayerIds = new Set();
     const serverZombieIds = new Set();
 
+
     serverSnapshot.players.forEach(p_server => {
         serverPlayerIds.add(p_server.id);
         let p_client = interpolatedEntities.players.get(p_server.id);
         const isMe = p_server.id === clientState.me.id;
+
 
         if (!p_client) {
             p_client = new Player(p_server.id, p_server.x, p_server.y, isMe, p_server.name);
@@ -415,6 +459,7 @@ function interpolateEntities(factor) {
             interpolatedEntities.players.set(p_server.id, p_client);
         }
 
+
         p_client.prevX = p_client.x;
         p_client.prevY = p_client.y;
         p_client.targetX = p_server.x;
@@ -422,23 +467,28 @@ function interpolateEntities(factor) {
         p_client.health = p_server.health;
         p_client.kills = p_server.kills;
 
+
         if (!isMe || !touchState.isTouchDevice) {
             p_client.shootX = p_server.shootX;
             p_client.shootY = p_server.shootY;
         }
 
+
         p_client.x = lerp(p_client.prevX, p_client.targetX, factor);
         p_client.y = lerp(p_client.prevY, p_client.targetY, factor);
     });
+
 
     serverSnapshot.zombies.forEach(z_server => {
         serverZombieIds.add(z_server.id);
         let z_client = interpolatedEntities.zombies.get(z_server.id);
 
+
         if (!z_client) {
             z_client = new Zombie(z_server.id, z_server.x, z_server.y, z_server.maxHealth);
             interpolatedEntities.zombies.set(z_server.id, z_client);
         }
+
 
         z_client.prevX = z_client.x;
         z_client.prevY = z_client.y;
@@ -447,18 +497,22 @@ function interpolateEntities(factor) {
         z_client.health = z_server.health;
         z_client.maxHealth = z_server.maxHealth;
 
+
         z_client.x = lerp(z_client.prevX, z_client.targetX, factor);
         z_client.y = lerp(z_client.prevY, z_client.targetY, factor);
     });
+
 
     interpolatedEntities.players.forEach((_, id) => {
         if (!serverPlayerIds.has(id)) { interpolatedEntities.players.delete(id); }
     });
 
+
     interpolatedEntities.zombies.forEach((_, id) => {
         if (!serverZombieIds.has(id)) { interpolatedEntities.zombies.delete(id); }
     });
 }
+
 
 function drawGame(deltaTime) {
     const me = clientState.interpolatedEntities.players.get(clientState.me.id);
@@ -469,19 +523,24 @@ function drawGame(deltaTime) {
         return;
     }
 
+
     const viewportW = canvas.width / SCALE; 
     const viewportH = canvas.height / SCALE;
 
+
     let cameraX = me.x - viewportW / 2;
     let cameraY = me.y - viewportH / 2;
+
 
     if (clientState.mapRenderer) {
         const mapSize = clientState.mapRenderer.mapWorldSize;
         cameraX = Math.max(0, Math.min(cameraX, mapSize - viewportW));
         cameraY = Math.max(0, Math.min(cameraY, mapSize - viewportH));
 
+
         if (viewportW > mapSize) cameraX = -(viewportW - mapSize) / 2; 
         if (viewportH > mapSize) cameraY = -(viewportH - mapSize) / 2;
+
 
         clientState.cameraX = cameraX;
         clientState.cameraY = cameraY;
@@ -490,38 +549,48 @@ function drawGame(deltaTime) {
         clientState.cameraY = cameraY;
     }
 
+
     ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0); 
     ctx.fillStyle = '#222';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+
     ctx.save();
     ctx.translate(-clientState.cameraX, -clientState.cameraY); 
+
 
     if (clientState.mapRenderer) {
         clientState.mapRenderer.draw(ctx, clientState.cameraX, clientState.cameraY);
     }
+
 
     clientState.serverSnapshot.bullets.forEach(b => {
         const bullet = new Bullet(b.id, b.x, b.y);
         bullet.draw(ctx);
     });
 
+
     clientState.interpolatedEntities.zombies.forEach(z => {
         z.draw(ctx);
     });
+
 
     clientState.interpolatedEntities.players.forEach(p => {
         p.draw(ctx);
     });
 
+
     ctx.restore();
 
+
     drawHUD(me);
+
 
     if (touchState.isTouchDevice) {
         drawJoysticks();
     }
 }
+
 
 function drawJoysticks() {
     if (touchState.move.active) {
@@ -531,11 +600,13 @@ function drawJoysticks() {
         ctx.arc(move.centerX, move.centerY, JOYSTICK_RADIUS, 0, Math.PI * 2);
         ctx.fill();
 
+
         ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
         ctx.beginPath();
         ctx.arc(move.currentX, move.currentY, KNOB_RADIUS, 0, Math.PI * 2);
         ctx.fill();
     }
+
 
     if (touchState.aim.active) {
         const aim = touchState.aim;
@@ -544,6 +615,7 @@ function drawJoysticks() {
         ctx.arc(aim.centerX, aim.centerY, JOYSTICK_RADIUS, 0, Math.PI * 2);
         ctx.fill();
 
+
         ctx.fillStyle = 'rgba(255, 0, 0, 0.6)';
         ctx.beginPath();
         ctx.arc(aim.currentX, aim.currentY, KNOB_RADIUS, 0, Math.PI * 2);
@@ -551,30 +623,143 @@ function drawJoysticks() {
     }
 }
 
+
+/**
+ * Dibuja el HUD (Puntuación, Vida) y el Minimapa.
+ */
 function drawHUD(player) {
     const { serverSnapshot } = clientState;
 
+
+    // 1. Dibujar la barra superior de información
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
     ctx.fillRect(0, 0, canvas.width, 40);
+
 
     ctx.fillStyle = 'white';
     ctx.font = 'bold 18px Arial';
 
+
     ctx.textAlign = 'left';
     ctx.fillText(`Vida: ${player && player.health > 0 ? player.health : 0} | Kills: ${player ? player.kills : 0}`, 10, 25);
+
 
     ctx.textAlign = 'center';
     ctx.fillText(`Puntuación: ${serverSnapshot.score} | Oleada: ${serverSnapshot.wave}`, canvas.width / 2, 25);
 
+
     ctx.textAlign = 'right';
     let xRight = canvas.width - 10;
+
 
     const myInfo = clientState.playersInLobby?.find(p => p.id === clientState.me.id);
     const myName = myInfo ? myInfo.name : 'Desconocido';
 
+
     ctx.fillStyle = player?.health > 0 ? 'cyan' : '#F44336';
     ctx.fillText(`${myName}: ${clientState.me.id?.substring(0, 4)}`, xRight, 25);
+
+
+    // 2. Dibujar el minimapa
+    drawMinimap(ctx, player);
 }
+
+
+/**
+ * Crea el canvas de fondo para el minimapa (solo se llama una vez)
+ */
+function createMinimapBackground() {
+    if (!clientState.mapRenderer) return;
+
+    const mapData = clientState.mapRenderer.map;
+    const gridSize = mapData.length;
+
+    // Crear un canvas del tamaño exacto de la cuadrícula
+    const mapCanvas = document.createElement('canvas');
+    mapCanvas.width = gridSize;
+    mapCanvas.height = gridSize;
+    const mapCtx = mapCanvas.getContext('2d');
+
+    // Dibujar el fondo (muros)
+    mapCtx.fillStyle = '#222'; // Color del muro
+    mapCtx.fillRect(0, 0, gridSize, gridSize);
+
+    // Dibujar el suelo
+    mapCtx.fillStyle = '#555'; // Color del suelo (más claro que el muro)
+    for (let y = 0; y < gridSize; y++) {
+        for (let x = 0; x < gridSize; x++) {
+            if (mapData[y][x] === 0) { // 0 = Suelo
+                mapCtx.fillRect(x, y, 1, 1);
+            }
+        }
+    }
+    
+    clientState.minimapCanvas = mapCanvas;
+}
+
+
+/**
+ * Dibuja el minimapa en la esquina superior derecha.
+ */
+function drawMinimap(ctx, me) {
+    if (!clientState.mapRenderer || !clientState.minimapCanvas || !me) {
+        return; // Aún no estamos listos para dibujar
+    }
+
+    const MINIMAP_SIZE = 150; // Tamaño del minimapa en píxeles
+    const MINIMAP_MARGIN = 20; // Margen desde los bordes
+    
+    // Posición debajo de la barra de HUD (40px)
+    const minimapX = canvas.width - MINIMAP_SIZE - MINIMAP_MARGIN;
+    const minimapY = 40 + MINIMAP_MARGIN;
+
+    const mapWorldSize = clientState.mapRenderer.mapWorldSize;
+    
+    // Ratio para convertir coordenadas del mundo a coordenadas del minimapa
+    const ratio = MINIMAP_SIZE / mapWorldSize;
+
+    // 1. Guardar contexto y crear un área de recorte (clipping)
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(minimapX, minimapY, MINIMAP_SIZE, MINIMAP_SIZE);
+    ctx.clip(); // No dibujar nada fuera de este rectángulo
+
+    // 2. Dibujar el fondo del minimapa (el canvas pre-renderizado)
+    // Esto es muy rápido porque es solo una imagen
+    ctx.drawImage(clientState.minimapCanvas, minimapX, minimapY, MINIMAP_SIZE, MINIMAP_SIZE);
+
+    // 3. Dibujar Zombies
+    ctx.fillStyle = '#F44336'; // Rojo
+    clientState.interpolatedEntities.zombies.forEach(zombie => {
+        const dotX = minimapX + (zombie.x * ratio);
+        const dotY = minimapY + (zombie.y * ratio);
+        ctx.fillRect(dotX - 1, dotY - 1, 2, 2); // Punto de 2x2
+    });
+
+    // 4. Dibujar otros jugadores
+    ctx.fillStyle = '#e34747'; // Rojo claro (color de 'otros' en entities.js)
+    clientState.interpolatedEntities.players.forEach(player => {
+        if (player.id === me.id) return; // Saltar, 'me' se dibuja al final
+        const dotX = minimapX + (player.x * ratio);
+        const dotY = minimapY + (player.y * ratio);
+        ctx.fillRect(dotX - 1, dotY - 1, 3, 3); // Punto de 3x3
+    });
+
+    // 5. Dibujar al jugador local (encima de todo)
+    ctx.fillStyle = '#2596be'; // Azul cian (color de 'me' en entities.js)
+    const meDotX = minimapX + (me.x * ratio);
+    const meDotY = minimapY + (me.y * ratio);
+    ctx.fillRect(meDotX - 2, meDotY - 2, 4, 4); // Punto de 4x4 (más grande)
+
+    // 6. Restaurar el contexto (quitar el clipping)
+    ctx.restore();
+
+    // 7. Dibujar el borde (después de restaurar)
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(minimapX, minimapY, MINIMAP_SIZE, MINIMAP_SIZE);
+}
+
 
 // --- INTERFAZ Y LOBBY ---
 function resizeCanvas() {
@@ -583,8 +768,10 @@ function resizeCanvas() {
     ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0); 
 }
 
+
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas(); 
+
 
 function updateUI() {
     const menuScreen = document.getElementById('menuScreen');
@@ -592,11 +779,13 @@ function updateUI() {
     const lobbyScreen = document.getElementById('lobbyScreen');
     const gameOverScreen = document.getElementById('gameOverScreen');
 
+
     menuScreen.style.display = 'none';
     settingsScreen.style.display = 'none';
     lobbyScreen.style.display = 'none';
     gameOverScreen.style.display = 'none';
     canvas.style.display = 'none';
+
 
     if (clientState.currentState === 'menu') {
         menuScreen.style.display = 'flex';
@@ -612,12 +801,15 @@ function updateUI() {
     }
 }
 
+
 function updateLobbyDisplay() {
     const playerList = document.getElementById('lobbyPlayerList');
     const startButton = document.getElementById('startButton');
     const hostConfigInfo = document.getElementById('hostConfigInfo');
 
+
     if (clientState.currentState !== 'lobby') return;
+
 
     playerList.innerHTML = '';
     clientState.playersInLobby.forEach(p => {
@@ -626,6 +818,7 @@ function updateLobbyDisplay() {
         li.style.color = p.id === clientState.me.id ? 'cyan' : 'white';
         playerList.appendChild(li);
     });
+
 
     if (clientState.me.isHost) { 
         startButton.style.display = 'block';
@@ -637,14 +830,17 @@ function updateLobbyDisplay() {
         hostConfigInfo.style.display = 'none';
     }
 
+
     document.getElementById('lobbyRoomId').textContent = `Sala ID: ${clientState.roomId}`;
 }
+
 
 // --- SOCKET.IO LISTENERS ---
 socket.on('connect', () => {
     clientState.me.id = socket.id;
     console.log(`[CLIENTE] Conectado: ${socket.id}`);
 });
+
 
 socket.on('gameCreated', (game) => {
     clientState.currentState = 'lobby';
@@ -654,6 +850,7 @@ socket.on('gameCreated', (game) => {
     updateUI();
 });
 
+
 socket.on('joinSuccess', (game) => {
     clientState.currentState = 'lobby';
     clientState.roomId = game.id;
@@ -662,11 +859,13 @@ socket.on('joinSuccess', (game) => {
     updateUI();
 });
 
+
 socket.on('joinFailed', (message) => {
     alert(`Error al unirse: ${message}`);
     clientState.currentState = 'menu';
     updateUI();
 });
+
 
 socket.on('lobbyUpdate', (game) => {
     clientState.playersInLobby = game.players;
@@ -674,23 +873,32 @@ socket.on('lobbyUpdate', (game) => {
     updateUI();
 });
 
+
 socket.on('gameStarted', (data) => {
     clientState.currentState = 'playing';
     clientState.mapRenderer = new MapRenderer(data.mapData, data.cellSize);
+    
+    // Crear el fondo del minimapa (solo una vez)
+    createMinimapBackground(); 
+
     clientState.interpolatedEntities.players.clear();
     clientState.interpolatedEntities.zombies.clear();
 
+
     updateUI();
     resizeCanvas(); 
+
 
     if (!animationFrameId) {
         animationFrameId = requestAnimationFrame(gameLoopRender);
     }
 });
 
+
 socket.on('gameState', (snapshot) => {
     clientState.serverSnapshot = snapshot;
 });
+
 
 socket.on('gameOver', (data) => {
     clientState.currentState = 'gameOver';
@@ -698,6 +906,7 @@ socket.on('gameOver', (data) => {
     document.getElementById('finalWave').textContent = data.finalWave;
     updateUI();
 });
+
 
 socket.on('gameEnded', () => {
     console.warn('La partida terminó.');
@@ -711,9 +920,11 @@ socket.on('gameEnded', () => {
     updateUI();
 });
 
+
 socket.on('playerDisconnected', (playerId) => {
     console.log(`Jugador desconectado: ${playerId}`);
 });
+
 
 // --- LISTENERS DE BOTONES ---
 document.getElementById('createGameButton').addEventListener('click', () => {
@@ -721,6 +932,7 @@ document.getElementById('createGameButton').addEventListener('click', () => {
     clientState.me.name = playerName;
     socket.emit('createGame', { name: playerName, config: gameConfig });
 });
+
 
 document.getElementById('joinGameButton').addEventListener('click', () => {
     const roomId = document.getElementById('roomIdInput').value.toUpperCase();
@@ -733,10 +945,12 @@ document.getElementById('joinGameButton').addEventListener('click', () => {
     socket.emit('joinGame', roomId, playerName);
 });
 
+
 document.getElementById('settingsButton').addEventListener('click', () => {
     clientState.currentState = 'settings';
     updateUI();
 });
+
 
 document.getElementById('saveSettingsButton').addEventListener('click', () => {
     readConfigFromUI();
@@ -745,17 +959,20 @@ document.getElementById('saveSettingsButton').addEventListener('click', () => {
     updateUI();
 });
 
+
 document.getElementById('resetSettingsButton').addEventListener('click', () => {
     gameConfig = {...DEFAULT_CONFIG};
     applyConfigToUI();
     saveConfig();
 });
 
+
 document.getElementById('startButton').addEventListener('click', () => {
     if (clientState.me.isHost && clientState.roomId) {
         socket.emit('startGame', clientState.roomId);
     }
 });
+
 
 document.getElementById('backToMenuButton').addEventListener('click', () => {
     if (clientState.currentState === 'lobby' && clientState.roomId) {
@@ -764,6 +981,7 @@ document.getElementById('backToMenuButton').addEventListener('click', () => {
     clientState.currentState = 'menu';
     updateUI();
 });
+
 
 // --- INICIO ---
 loadConfig();
