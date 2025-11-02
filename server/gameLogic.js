@@ -1,7 +1,7 @@
 /**
  * server/gameLogic.js - ACTUALIZADO
- * - Eliminada la colisión entre zombies (se pueden superponer).
- * - Mantenida la lógica de seguimiento de camino fluida.
+ * - Añadida "Lógica de Enjambre" (Swarm Logic) a los zombies para que no se apilen.
+ * - Eliminada la llamada a 'smoothPath' para evitar el "zigzag".
  */
 
 const ServerMapGenerator = require('./serverMapGenerator'); 
@@ -102,7 +102,6 @@ class ServerZombie extends ServerEntity {
             if (currentTime - this.lastAttackTime > this.attackCooldown) {
                 target.health = Math.max(0, target.health - this.attackDamage);
                 this.lastAttackTime = currentTime;
-                // console.log(`[GAME] Jugador ${target.id} golpeado. Vida: ${target.health}`);
             }
             return;
         }
@@ -110,7 +109,7 @@ class ServerZombie extends ServerEntity {
         // Actualizar timer de pathfinding
         this.pathUpdateTimer += deltaTime;
 
-        // Detectar si está atascado (contra un muro, ya no contra otros zombies)
+        // Detectar si está atascado (contra un muro)
         const movedDistance = Math.sqrt(
             (this.x - this.lastPosition.x) ** 2 + 
             (this.y - this.lastPosition.y) ** 2
@@ -197,15 +196,41 @@ class ServerZombie extends ServerEntity {
 
     /**
      * Calcula un nuevo camino hacia el objetivo usando A*
+     * *** AHORA CON LÓGICA DE ENJAMBRE (SWARM) ***
      */
     calculatePath(target, pathfinder, mapGenerator) {
         const startGrid = mapGenerator.worldToGrid(this.x, this.y);
-        const goalGrid = mapGenerator.worldToGrid(target.x, target.y);
 
-        const path = pathfinder.findPath(startGrid, goalGrid);
+        // *** NUEVA LÓGICA DE ENJAMBRE (SWARM) ***
+        // Añadir un pequeño offset aleatorio al objetivo
+        // para que no todos los zombies apunten al mismo píxel.
+        const offset = mapGenerator.cellSize * 2; // Apuntar a un área de +/- 2 celdas
+        const targetX = target.x + (Math.random() - 0.5) * offset;
+        const targetY = target.y + (Math.random() - 0.5) * offset;
+        
+        const goalGrid = mapGenerator.worldToGrid(targetX, targetY);
+        // *** FIN LÓGICA DE ENJAMBRE ***
+
+        // Validar el nuevo goalGrid (¡Importante!)
+        // Si el punto aleatorio está en un muro, usar la posición real del jugador como fallback
+        let finalGoalGrid = goalGrid;
+        if (!pathfinder.isValid(goalGrid)) {
+            finalGoalGrid = mapGenerator.worldToGrid(target.x, target.y);
+            // Asegurarse de que la posición real del jugador es válida
+            if (!pathfinder.isValid(finalGoalGrid)) {
+                // Si incluso el jugador está en un muro (¿cómo?), no podemos calcular el camino
+                this.path = [];
+                this.currentPathIndex = 0;
+                return;
+            }
+        }
+        
+        const path = pathfinder.findPath(startGrid, finalGoalGrid);
         
         if (path && path.length > 1) {
-            this.path = pathfinder.smoothPath(path);
+            // *** CAMBIO: Ya NO suavizamos el camino ***
+            // El suavizado (smoothPath) causaba el "zigzag"
+            this.path = path; 
             this.currentPathIndex = 0; 
         } else {
             this.path = [];
@@ -296,51 +321,6 @@ class GameLogic {
         return distance < minDistance;
     }
 
-    /**
-     * Resuelve colisión entre dos entidades (empujándolas)
-     * (Esta función ya no se usa para Z-Z, pero se mantiene por si se usa para P-Z)
-     */
-    resolveEntityCollision(entityA, entityB, mapChecker) {
-        const dx = entityB.x - entityA.x;
-        const dy = entityB.y - entityA.y;
-        let distance = Math.sqrt(dx * dx + dy * dy);
-        const minDistance = entityA.radius + entityB.radius;
-        
-        if (distance === 0) {
-            distance = 0.1; 
-        }
-
-        if (distance < minDistance) {
-            const overlap = minDistance - distance;
-            const nx = dx / distance;
-            const ny = dy / distance;
-            
-            const moveAX = -nx * overlap * 0.5;
-            const moveAY = -ny * overlap * 0.5;
-            const moveBX = nx * overlap * 0.5;
-            const moveBY = ny * overlap * 0.5;
-    
-            const oldAx = entityA.x;
-            const oldAy = entityA.y;
-            const oldBx = entityB.x;
-            const oldBy = entityB.y;
-    
-            entityA.x += moveAX;
-            entityA.y += moveAY;
-            if (mapChecker && mapChecker.checkMapCollision(entityA)) {
-                entityA.x = oldAx; 
-                entityA.y = oldAy;
-            }
-    
-            entityB.x += moveBX;
-            entityB.y += moveBY;
-            if (mapChecker && mapChecker.checkMapCollision(entityB)) {
-                entityB.x = oldBx; 
-                entityB.y = oldBy;
-            }
-        }
-    }
-
     spawnZombies(count) {
         for (let i = 0; i < count; i++) {
             const zombieId = `zombie_${Date.now()}_${i}`; 
@@ -424,20 +404,6 @@ class GameLogic {
             }
         });
 
-        // --- BLOQUE DE COLISIÓN Z-Z ELIMINADO ---
-        /*
-        // Colisiones zombie-zombie (Ahora más seguras)
-        for (let i = 0; i < zombieArray.length; i++) {
-            for (let j = i + 1; j < zombieArray.length; j++) {
-                if (this.checkEntityCollision(zombieArray[i], zombieArray[j])) {
-                    this.resolveEntityCollision(zombieArray[i], zombieArray[j], this); 
-                }
-            }
-        }
-        */
-        // --- FIN DEL BLOQUE ELIMINADO ---
-
-
         // 3. Actualizar Balas
         const bulletsToRemove = [];
         const zombiesToRemove = [];
@@ -451,6 +417,9 @@ class GameLogic {
             }
 
             this.entities.zombies.forEach(zombie => {
+                // (No necesitamos comprobar si el zombie está muerto,
+                // ya que será eliminado del mapa de todos modos)
+                
                 const dx = zombie.x - bullet.x;
                 const dy = zombie.y - bullet.y;
                 const distSq = dx * dx + dy * dy;
