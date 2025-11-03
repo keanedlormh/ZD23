@@ -1,8 +1,10 @@
 /**
  * client/js/game.js - ACTUALIZADO
- * - Añadido un minimapa en la esquina superior derecha.
- * - Creada una función 'createMinimapBackground' para eficiencia.
- * - 'drawHUD' ahora también llama a 'drawMinimap'.
+ * - Añadido estado 'roomList' a updateUI.
+ * - Añadidos listeners para los nuevos botones (buscar, refrescar, volver).
+ * - Añadido listener de socket 'gameList' para recibir las salas.
+ * - Añadida función 'populateRoomList' para crear la lista dinámica.
+ * - Modificado 'joinGameButton' para que solo maneje "unirse por ID".
  */
 
 const socket = io();
@@ -778,12 +780,13 @@ function updateUI() {
     const settingsScreen = document.getElementById('settingsScreen');
     const lobbyScreen = document.getElementById('lobbyScreen');
     const gameOverScreen = document.getElementById('gameOverScreen');
-
+    const roomListScreen = document.getElementById('roomListScreen'); // NUEVO
 
     menuScreen.style.display = 'none';
     settingsScreen.style.display = 'none';
     lobbyScreen.style.display = 'none';
     gameOverScreen.style.display = 'none';
+    roomListScreen.style.display = 'none'; // NUEVO
     canvas.style.display = 'none';
 
 
@@ -798,6 +801,8 @@ function updateUI() {
         canvas.style.display = 'block';
     } else if (clientState.currentState === 'gameOver') {
         gameOverScreen.style.display = 'flex';
+    } else if (clientState.currentState === 'roomList') { // NUEVO
+        roomListScreen.style.display = 'flex';
     }
 }
 
@@ -834,6 +839,48 @@ function updateLobbyDisplay() {
     document.getElementById('lobbyRoomId').textContent = `Sala ID: ${clientState.roomId}`;
 }
 
+/**
+ * NUEVA FUNCIÓN: Rellena la lista de salas activas
+ */
+function populateRoomList(games) {
+    const container = document.getElementById('roomListContainer');
+    if (!container) return;
+
+    container.innerHTML = ''; // Limpiar lista anterior
+
+    if (games.length === 0) {
+        container.innerHTML = '<p style="padding: 20px; color: #aaa; text-align: center;">No hay salas activas. ¡Crea una!</p>';
+        return;
+    }
+
+    games.forEach(game => {
+        const roomItem = document.createElement('div');
+        roomItem.className = 'room-item';
+        
+        // Info de la sala
+        const roomInfo = document.createElement('div');
+        roomInfo.className = 'room-info';
+        roomInfo.innerHTML = `
+            <strong>Sala: ${game.id}</strong>
+            <span>Host: ${game.hostName} (${game.playerCount} jugador${game.playerCount > 1 ? 'es' : ''})</span>
+        `;
+        
+        // Botón de unirse
+        const joinButton = document.createElement('button');
+        joinButton.textContent = 'Unirse';
+        joinButton.className = 'room-join-button';
+        joinButton.onclick = () => {
+            const playerName = document.getElementById('playerNameInput').value || 'Anónimo';
+            clientState.me.name = playerName;
+            socket.emit('joinGame', game.id, playerName);
+        };
+
+        roomItem.appendChild(roomInfo);
+        roomItem.appendChild(joinButton);
+        container.appendChild(roomItem);
+    });
+}
+
 
 // --- SOCKET.IO LISTENERS ---
 socket.on('connect', () => {
@@ -861,7 +908,19 @@ socket.on('joinSuccess', (game) => {
 
 
 socket.on('joinFailed', (message) => {
-    alert(`Error al unirse: ${message}`);
+    // No usamos alert, mostramos error en el input de ID
+    const input = document.getElementById('roomIdInput');
+    if (input) {
+        input.value = '';
+        input.placeholder = message.toUpperCase();
+        input.style.borderColor = '#F44336';
+        input.style.boxShadow = '0 0 10px rgba(244, 67, 54, 0.5)';
+        setTimeout(() => {
+            input.placeholder = 'UNIRSE POR ID (EJ: ABCD)';
+            input.style.borderColor = '';
+            input.style.boxShadow = '';
+        }, 3000);
+    }
     clientState.currentState = 'menu';
     updateUI();
 });
@@ -870,7 +929,11 @@ socket.on('joinFailed', (message) => {
 socket.on('lobbyUpdate', (game) => {
     clientState.playersInLobby = game.players;
     clientState.me.isHost = game.players.find(p => p.id === clientState.me.id)?.isHost || false;
-    updateUI();
+    
+    // Si estamos en el lobby, actualizamos
+    if (clientState.currentState === 'lobby') {
+        updateUI();
+    }
 });
 
 
@@ -925,6 +988,13 @@ socket.on('playerDisconnected', (playerId) => {
     console.log(`Jugador desconectado: ${playerId}`);
 });
 
+/**
+ * NUEVO LISTENER: Recibe la lista de salas del servidor
+ */
+socket.on('gameList', (games) => {
+    populateRoomList(games);
+});
+
 
 // --- LISTENERS DE BOTONES ---
 document.getElementById('createGameButton').addEventListener('click', () => {
@@ -933,12 +1003,53 @@ document.getElementById('createGameButton').addEventListener('click', () => {
     socket.emit('createGame', { name: playerName, config: gameConfig });
 });
 
+/**
+ * NUEVO: Botón para abrir el buscador de salas
+ */
+document.getElementById('browseGamesButton').addEventListener('click', () => {
+    clientState.currentState = 'roomList';
+    updateUI();
+    // Mostrar un "cargando" y pedir la lista
+    const container = document.getElementById('roomListContainer');
+    if (container) {
+        container.innerHTML = '<p style="padding: 20px; color: #aaa; text-align: center;">Buscando salas...</p>';
+    }
+    socket.emit('requestGameList');
+});
+
+/**
+ * NUEVO: Botón para refrescar la lista de salas
+ */
+document.getElementById('refreshRoomListButton').addEventListener('click', () => {
+    const container = document.getElementById('roomListContainer');
+    if (container) {
+        container.innerHTML = '<p style="padding: 20px; color: #aaa; text-align: center;">Refrescando...</p>';
+    }
+    socket.emit('requestGameList');
+});
+
+/**
+ * NUEVO: Botón para volver al menú desde la lista de salas
+ */
+document.getElementById('backToMenuFromRoomListButton').addEventListener('click', () => {
+    clientState.currentState = 'menu';
+    updateUI();
+});
+
 
 document.getElementById('joinGameButton').addEventListener('click', () => {
+    // Esta es ahora "Unirse por ID"
     const roomId = document.getElementById('roomIdInput').value.toUpperCase();
     const playerName = document.getElementById('playerNameInput').value || 'Anónimo';
     if (!roomId || roomId.length !== 4) {
-        alert('Por favor, ingresa un ID de sala válido de 4 caracteres.');
+        // Mostrar error visual en lugar de alert
+        const input = document.getElementById('roomIdInput');
+        input.style.borderColor = '#F44336';
+        input.style.boxShadow = '0 0 10px rgba(244, 67, 54, 0.5)';
+        setTimeout(() => {
+            input.style.borderColor = '';
+            input.style.boxShadow = '';
+        }, 2000);
         return;
     }
     clientState.me.name = playerName;
