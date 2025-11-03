@@ -138,6 +138,10 @@
         #createGameButton { background-color: #4CAF50; }
         #createGameButton:hover:not(:disabled) { background-color: #5cc460; }
 
+        /* Botón de Buscar Partidas */
+        #browseGamesButton { background-color: #4CAF50; }
+        #browseGamesButton:hover:not(:disabled) { background-color: #5cc460; }
+
         #joinGameButton, #settingsButton, #saveSettingsButton, #backToMenuButton { 
             background-color: #336699; 
         }
@@ -240,6 +244,64 @@
             padding: 10px;
         }
 
+        /* --- ESTILOS PARA LA LISTA DE SALAS (NUEVO) --- */
+        #roomListContainer {
+            width: 100%;
+            min-height: 200px;
+            max-height: 40vh;
+            overflow-y: auto;
+            background-color: rgba(0, 0, 0, 0.2);
+            border-radius: 5px;
+            border: 1px solid #333;
+            margin-bottom: 15px;
+        }
+
+        .room-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            border-bottom: 1px dashed #444;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .room-item:hover {
+            background-color: rgba(76, 175, 80, 0.3);
+        }
+
+        .room-item:last-child {
+            border-bottom: none;
+        }
+
+        .room-info {
+            text-align: left;
+        }
+
+        .room-info strong {
+            font-size: 1.2em;
+            color: #eee;
+        }
+
+        .room-info span {
+            font-size: 0.9em;
+            color: #aaa;
+            display: block;
+        }
+
+        .room-join-button {
+            padding: 8px 12px;
+            font-size: 0.9em;
+            margin: 0; /* Override button defaults */
+            width: auto; /* Override button defaults */
+            background-color: #4CAF50;
+        }
+        
+        .room-list-actions {
+            display: flex;
+            gap: 10px;
+        }
+
 
         /* --- MEDIA QUERY PARA MÓVILES --- */
         @media (max-width: 600px) {
@@ -273,6 +335,16 @@
             .setting-item select {
                 width: 100%; /* Ancho completo para inputs */
             }
+
+            /* Estilos de lista de salas en móvil */
+            .room-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .room-join-button {
+                width: 100%;
+            }
         }
 
     </style>
@@ -293,8 +365,12 @@
         <hr>
 
         <button id="createGameButton">Crear Partida</button>
-        <button id="joinGameButton">Unirse a Partida</button>
-        <input type="text" id="roomIdInput" placeholder="ID DE SALA (EJ: ABCD)" maxlength="4" style="text-transform: uppercase;">
+        <button id="browseGamesButton">Buscar Partidas</button> <!-- Botón Actualizado -->
+
+        <hr>
+
+        <input type="text" id="roomIdInput" placeholder="UNIRSE POR ID (EJ: ABCD)" maxlength="4" style="text-transform: uppercase;">
+        <button id="joinGameButton">Unirse por ID</button> <!-- Botón Actualizado -->
 
         <hr>
         
@@ -419,6 +495,21 @@
         <button id="startButton">Iniciar Partida</button>
         <button id="backToMenuButton">Volver al Menú</button>
     </div>
+
+    <!-- PANTALLA DE BUSCADOR DE SALAS (NUEVA) -->
+    <div id="roomListScreen" class="menu-container" style="display: none;">
+        <h2>Salas Activas</h2>
+        
+        <div id="roomListContainer">
+            <!-- Las salas se inyectarán aquí (ej: <p>Buscando...</p>) -->
+        </div>
+
+        <div class="room-list-actions">
+            <button id="refreshRoomListButton" style="background-color: #336699; flex: 1;">Refrescar</button>
+            <button id="backToMenuFromRoomListButton" style="background-color: #993333; flex: 1;">Volver</button>
+        </div>
+    </div>
+
 
     <!-- Pantalla de Game Over -->
     <div id="gameOverScreen" class="menu-container" style="display: none;">
