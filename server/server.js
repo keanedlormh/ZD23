@@ -1,7 +1,10 @@
 /**
- * server/server.js - CORREGIDO
- * Todas las comillas tipográficas reemplazadas por comillas estándar
+ * server/server.js - ACTUALIZADO
+ * - Añadido un nuevo listener: 'requestGameList'.
+ * - Este listener envía al cliente una lista de todas las salas
+ * que están actualmente en 'lobby' (pendientes de empezar).
  */
+
 
 const express = require('express');
 const http = require('http');
@@ -9,16 +12,20 @@ const path = require('path');
 const { Server } = require('socket.io');
 const GameLogic = require('./gameLogic'); 
 
+
 const app = express();
 app.use(express.static(path.join(__dirname, '../client')));
 const server = http.createServer(app);
 const io = new Server(server);
 
+
 const PORT = process.env.PORT || 3000;
 const SERVER_TICK_RATE = 30;
 
+
 const activeGames = new Map();
 const userToRoom = new Map();
+
 
 // Configuracion por defecto (misma que en el cliente)
 const DEFAULT_CONFIG = {
@@ -38,6 +45,7 @@ const DEFAULT_CONFIG = {
     waveMultiplier: 3
 };
 
+
 class Player {
     constructor(id, name, isHost = false) {
         this.id = id;
@@ -45,6 +53,7 @@ class Player {
         this.isHost = isHost;
     }
 }
+
 
 class Game {
     constructor(id, hostId, hostName, config) {
@@ -55,6 +64,7 @@ class Game {
         this.gameLoopInterval = null;
         this.config = config || { ...DEFAULT_CONFIG };
     }
+
 
     getLobbyData() {
         return {
@@ -69,6 +79,7 @@ class Game {
     }
 }
 
+
 function generateRoomId() {
     let id = '';
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -78,9 +89,11 @@ function generateRoomId() {
     return id;
 }
 
+
 function handleGameCleanup(roomId) {
     const game = activeGames.get(roomId);
     if (!game) return;
+
 
     if (game.players.length === 0) {
         if (game.gameLoopInterval) clearInterval(game.gameLoopInterval);
@@ -88,6 +101,7 @@ function handleGameCleanup(roomId) {
         console.log(`[CLEANUP] Sala ${roomId} eliminada.`);
     } else {
         let currentHost = game.players.find(p => p.isHost);
+
 
         if (!currentHost || !game.players.some(p => p.id === currentHost.id)) {
             game.players.forEach(p => p.isHost = false); 
@@ -99,10 +113,13 @@ function handleGameCleanup(roomId) {
     }
 }
 
+
 // --- SOCKET.IO ---
+
 
 io.on('connection', (socket) => {
     console.log(`[CONEXION] Usuario: ${socket.id}`);
+
 
     // Crear partida CON configuracion
     socket.on('createGame', (data) => {
@@ -111,64 +128,97 @@ io.on('connection', (socket) => {
             roomId = generateRoomId();
         }
 
+
         if (userToRoom.has(socket.id)) {
              socket.emit('joinFailed', 'Ya estas en una sala.');
             return;
         }
 
+
         const playerName = data.name || 'Jugador';
         const config = data.config || { ...DEFAULT_CONFIG };
+
 
         const newGame = new Game(roomId, socket.id, playerName, config);
         activeGames.set(roomId, newGame);
         userToRoom.set(socket.id, roomId);
 
+
         socket.join(roomId);
+
 
         console.log(`[LOBBY] Partida creada: ${roomId} por ${playerName}`);
         console.log(`[CONFIG] Configuracion:`, config);
         socket.emit('gameCreated', newGame.getLobbyData());
     });
 
+
     socket.on('joinGame', (roomId, playerName) => {
         const game = activeGames.get(roomId);
+
 
         if (!game || game.status !== 'lobby') {
             socket.emit('joinFailed', 'Sala no encontrada o partida iniciada.');
             return;
         }
 
+
         if (userToRoom.has(socket.id)) {
             socket.emit('joinFailed', 'Ya estas en una sala.');
             return;
         }
+
 
         const newPlayer = new Player(socket.id, playerName);
         game.players.push(newPlayer);
         userToRoom.set(socket.id, roomId);
         socket.join(roomId);
 
+
         console.log(`[LOBBY] ${playerName} se unio a sala ${roomId}`);
+
 
         socket.emit('joinSuccess', game.getLobbyData()); 
         io.to(roomId).emit('lobbyUpdate', game.getLobbyData());
     });
 
+    /**
+     * NUEVO LISTENER: Petición de lista de salas
+     */
+    socket.on('requestGameList', () => {
+        // Filtrar juegos activos para encontrar solo los que están en 'lobby'
+        const joinableGames = Array.from(activeGames.values())
+            .filter(game => game.status === 'lobby')
+            .map(game => ({
+                id: game.id,
+                hostName: game.players.find(p => p.isHost)?.name || 'Desconocido',
+                playerCount: game.players.length
+            }));
+        
+        // Enviar la lista solo al cliente que la pidió
+        socket.emit('gameList', joinableGames);
+    });
+
+
     socket.on('leaveRoom', (roomId) => {
         const game = activeGames.get(roomId);
+
 
         if (game && userToRoom.get(socket.id) === roomId && game.status === 'lobby') {
             socket.leave(roomId);
             game.players = game.players.filter(p => p.id !== socket.id);
             userToRoom.delete(socket.id);
 
+
             console.log(`[LOBBY] Jugador ${socket.id} abandono sala ${roomId}`);
             handleGameCleanup(roomId);
         }
     });
 
+
     socket.on('startGame', (roomId) => {
         const game = activeGames.get(roomId);
+
 
         const isHost = game?.players.find(p => p.id === socket.id)?.isHost;
         if (!game || game.status !== 'lobby' || !isHost) {
@@ -176,8 +226,10 @@ io.on('connection', (socket) => {
             return;
         }
 
+
         console.log(`[GAME START] Iniciando en sala ${roomId}`);
         console.log(`[CONFIG] Usando configuracion:`, game.config);
+
 
         const playerData = game.players.map(p => ({ id: p.id, name: p.name }));
         
@@ -185,17 +237,22 @@ io.on('connection', (socket) => {
         game.gameLogic = new GameLogic(playerData, game.config);
         game.status = 'playing';
 
+
         const mapData = {
             mapData: game.gameLogic.map.map,
             cellSize: game.gameLogic.map.cellSize
         };
 
+
         io.to(roomId).emit('gameStarted', mapData);
+
 
         game.gameLoopInterval = setInterval(() => {
             if (game.status !== 'playing') return;
 
+
             game.gameLogic.update(); 
+
 
             if (game.gameLogic.isGameOver()) {
                 clearInterval(game.gameLoopInterval);
@@ -206,50 +263,63 @@ io.on('connection', (socket) => {
                 return;
             }
 
+
             const snapshot = game.gameLogic.getGameStateSnapshot(); 
             io.to(roomId).emit('gameState', snapshot);
+
 
         }, 1000 / SERVER_TICK_RATE);
     });
 
+
     socket.on('playerInput', (input) => {
         const roomId = userToRoom.get(socket.id);
         const game = activeGames.get(roomId);
+
 
         if (game && game.status === 'playing' && game.gameLogic) {
             game.gameLogic.handlePlayerInput(socket.id, input);
         }
     });
 
+
     socket.on('disconnect', () => {
         const roomId = userToRoom.get(socket.id);
         const game = activeGames.get(roomId);
 
+
         if (game) {
             console.log(`[DESCONEXION] Jugador ${socket.id} en sala ${roomId}`);
 
+
             game.players = game.players.filter(p => p.id !== socket.id);
             userToRoom.delete(socket.id);
+
 
             if (game.status === 'playing' && game.gameLogic) {
                 game.gameLogic.removePlayer(socket.id);
                 io.to(roomId).emit('playerDisconnected', socket.id);
             }
 
+
             handleGameCleanup(roomId);
         } else {
             userToRoom.delete(socket.id); 
         }
 
+
         console.log(`[DESCONEXION] Usuario: ${socket.id}`);
     });
 });
 
+
 // --- INICIO DEL SERVIDOR ---
+
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, '../client', 'index.html')); 
 });
+
 
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
