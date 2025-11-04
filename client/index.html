@@ -233,6 +233,11 @@
             margin: 0;
             font-size: 1em;
         }
+        /* Corregir ancho del select de control */
+        #setting_controlType {
+            width: 150px;
+        }
+
         .preset-buttons {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
@@ -335,6 +340,10 @@
             .setting-item select {
                 width: 100%; /* Ancho completo para inputs */
             }
+            /* Corregir ancho del select en móvil */
+            #setting_controlType {
+                width: 100%;
+            }
 
             /* Estilos de lista de salas en móvil */
             .room-item {
@@ -389,6 +398,17 @@
 
         <div class="settings-group">
             <h3>🎮 Jugador</h3>
+            
+            <!-- NUEVA OPCIÓN DE CONTROL -->
+            <div class="setting-item">
+                <label>Método de Control:</label>
+                <select id="setting_controlType">
+                    <option value="auto">Automático</option>
+                    <option value="touch">Joystick Táctil</option>
+                    <option value="keyboard">Teclado/Ratón</option>
+                </select>
+            </div>
+            
             <div class="setting-item">
                 <label>Vida Máxima:</label>
                 <input type="number" id="setting_playerHealth" min="50" max="300" value="100">
