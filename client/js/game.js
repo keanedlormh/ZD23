@@ -1,10 +1,14 @@
 /**
  * client/js/game.js - ACTUALIZADO
- * - Añadido estado 'roomList' a updateUI.
- * - Añadidos listeners para los nuevos botones (buscar, refrescar, volver).
- * - Añadido listener de socket 'gameList' para recibir las salas.
- * - Añadida función 'populateRoomList' para crear la lista dinámica.
- * - Modificado 'joinGameButton' para que solo maneje "unirse por ID".
+ * - Añadido 'controlType' a DEFAULT_CONFIG.
+ * - 'loadConfig', 'saveConfig', 'applyConfigToUI', 'readConfigFromUI' ahora
+ * manejan la nueva opción 'setting_controlType'.
+ * - 'applyPreset' ahora fusiona los presets sin sobreescribir 'controlType'.
+ * - Añadida 'updateControlMethod' para cambiar entre modos de control.
+ * - Los listeners de Teclado/Ratón y Táctil ahora dependen de 'touchState.currentControlMethod'
+ * en lugar de 'touchState.isTouchDevice'.
+ * - 'drawJoysticks' y la lógica de interpolación de puntería ahora también
+ * respetan el método de control seleccionado.
  */
 
 const socket = io();
@@ -17,6 +21,7 @@ const SERVER_TICK_RATE = 30;
 
 // Configuración por defecto del juego
 const DEFAULT_CONFIG = {
+    controlType: 'auto', // NUEVO: 'auto', 'touch', 'keyboard'
     playerHealth: 100,
     playerSpeed: 6,
     shootCooldown: 150,
@@ -41,12 +46,15 @@ function loadConfig() {
     const saved = localStorage.getItem('zombieGameConfig');
     if (saved) {
         try {
+            // Fusionar defaults con guardado para no romper con nuevas configs
             gameConfig = {...DEFAULT_CONFIG, ...JSON.parse(saved)};
-            applyConfigToUI();
         } catch (e) {
-            console.warn('Error cargando configuración:', e);
+            console.warn('Error cargando configuración, usando defaults:', e);
+            gameConfig = {...DEFAULT_CONFIG};
         }
     }
+    applyConfigToUI();
+    updateControlMethod(); // Determinar método de control al cargar
 }
 
 // Guardar configuración en localStorage
@@ -56,6 +64,7 @@ function saveConfig() {
 
 // Aplicar configuración a los inputs del UI
 function applyConfigToUI() {
+    document.getElementById('setting_controlType').value = gameConfig.controlType; // NUEVO
     document.getElementById('setting_playerHealth').value = gameConfig.playerHealth;
     document.getElementById('setting_playerSpeed').value = gameConfig.playerSpeed;
     document.getElementById('setting_shootCooldown').value = gameConfig.shootCooldown;
@@ -74,6 +83,7 @@ function applyConfigToUI() {
 
 // Leer configuración desde el UI
 function readConfigFromUI() {
+    gameConfig.controlType = document.getElementById('setting_controlType').value; // NUEVO
     gameConfig.playerHealth = parseInt(document.getElementById('setting_playerHealth').value);
     gameConfig.playerSpeed = parseFloat(document.getElementById('setting_playerSpeed').value);
     gameConfig.shootCooldown = parseInt(document.getElementById('setting_shootCooldown').value);
@@ -90,11 +100,12 @@ function readConfigFromUI() {
     gameConfig.waveMultiplier = parseFloat(document.getElementById('setting_waveMultiplier').value);
 }
 
-// Presets de dificultad
+// Presets de dificultad (CORREGIDO para no sobreescribir config de control)
 window.applyPreset = function(preset) {
+    let presetSettings = {};
     switch(preset) {
         case 'easy':
-            gameConfig = {
+            presetSettings = {
                 playerHealth: 150,
                 playerSpeed: 7,
                 shootCooldown: 100,
@@ -112,10 +123,12 @@ window.applyPreset = function(preset) {
             };
             break;
         case 'normal':
-            gameConfig = {...DEFAULT_CONFIG};
+            presetSettings = {...DEFAULT_CONFIG};
+            // Borrar controlType para que no resetee el del usuario
+            delete presetSettings.controlType; 
             break;
         case 'hard':
-            gameConfig = {
+            presetSettings = {
                 playerHealth: 80,
                 playerSpeed: 5,
                 shootCooldown: 200,
@@ -133,6 +146,8 @@ window.applyPreset = function(preset) {
             };
             break;
     }
+    // Fusionar preset con config existente (para no perder controlType)
+    gameConfig = {...gameConfig, ...presetSettings};
     applyConfigToUI();
 };
 
@@ -154,9 +169,22 @@ const KNOB_RADIUS = 30;
 
 const touchState = {
     isTouchDevice: 'ontouchstart' in window || navigator.maxTouchPoints > 0,
+    currentControlMethod: 'auto', // NUEVO: Se setea a 'touch' o 'keyboard' en updateControlMethod
     move: { active: false, id: null, centerX: 0, centerY: 0, currentX: 0, currentY: 0 },
     aim: { active: false, id: null, centerX: 0, centerY: 0, currentX: 0, currentY: 0 }
 };
+
+/**
+ * NUEVO: Determina qué método de control usar basado en la config
+ */
+function updateControlMethod() {
+    let method = gameConfig.controlType;
+    if (method === 'auto') {
+        method = (touchState.isTouchDevice) ? 'touch' : 'keyboard';
+    }
+    touchState.currentControlMethod = method;
+    console.log(`[CONTROLES] Método de control activo: ${method}`);
+}
 
 
 // Estado del juego en el cliente
@@ -212,215 +240,198 @@ function sendInputToServer() {
 
 
 // --- MOVIMIENTO Y PUNTERÍA (TECLADO/RATÓN) ---
-if (!touchState.isTouchDevice) {
-    const moveKeys = {
-        'w': { dy: -1 }, 's': { dy: 1 },
-        'a': { dx: -1 }, 'd': { dx: 1 },
-    };
-    const keysPressed = new Set();
+// CAMBIADO: 'if (!touchState.isTouchDevice)' por 'if (touchState.currentControlMethod === 'keyboard')'
+// Nota: Se debe volver a comprobar en el evento, ya que el método puede cambiar.
+// El listener se añade una vez, pero solo ejecutará la lógica si el modo es correcto.
 
+const moveKeys = {
+    'w': { dy: -1 }, 's': { dy: 1 },
+    'a': { dx: -1 }, 'd': { dx: 1 },
+};
+const keysPressed = new Set();
 
-    document.addEventListener('keydown', (e) => {
-        if (clientState.currentState !== 'playing') return;
-        const key = e.key.toLowerCase();
-        if (moveKeys[key]) {
-            keysPressed.add(key);
-            updateMoveInput();
-            e.preventDefault();
-        }
-    });
-
-
-    document.addEventListener('keyup', (e) => {
-        if (clientState.currentState !== 'playing') return;
-        const key = e.key.toLowerCase();
-        if (moveKeys[key]) {
-            keysPressed.delete(key);
-            updateMoveInput();
-        }
-    });
-
-
-    function updateMoveInput() {
-        let moveX = 0;
-        let moveY = 0;
-        keysPressed.forEach(key => {
-            if (moveKeys[key].dx) moveX += moveKeys[key].dx;
-            if (moveKeys[key].dy) moveY += moveKeys[key].dy;
-        });
-        clientState.input.moveX = moveX;
-        clientState.input.moveY = moveY;
+document.addEventListener('keydown', (e) => {
+    if (clientState.currentState !== 'playing' || touchState.currentControlMethod !== 'keyboard') return; // CHECK
+    const key = e.key.toLowerCase();
+    if (moveKeys[key]) {
+        keysPressed.add(key);
+        updateMoveInput();
+        e.preventDefault();
     }
+});
 
-
-    function calculateAimVector(e) {
-        if (clientState.currentState !== 'playing') return;
-
-
-        const rect = canvas.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left; 
-        const mouseY = e.clientY - rect.top;
-
-
-        const playerScreenX = canvas.width / 2;
-        const playerScreenY = canvas.height / 2;
-
-
-        let shootX = mouseX - playerScreenX;
-        let shootY = mouseY - playerScreenY;
-
-
-        const length = Math.sqrt(shootX ** 2 + shootY ** 2);
-        if (length > 0.1) { 
-            clientState.input.shootX = shootX / length;
-            clientState.input.shootY = shootY / length;
-
-
-            const me = clientState.interpolatedEntities.players.get(clientState.me.id);
-            if (me) {
-                me.shootX = clientState.input.shootX;
-                me.shootY = clientState.input.shootY;
-            }
-        }
+document.addEventListener('keyup', (e) => {
+    if (clientState.currentState !== 'playing' || touchState.currentControlMethod !== 'keyboard') return; // CHECK
+    const key = e.key.toLowerCase();
+    if (moveKeys[key]) {
+        keysPressed.delete(key);
+        updateMoveInput();
     }
+});
 
-
-    canvas.addEventListener('mousemove', calculateAimVector);
-
-
-    canvas.addEventListener('mousedown', (e) => {
-        if (clientState.currentState !== 'playing') return;
-        if (e.button === 0) {
-            clientState.input.isShooting = true;
-        }
+function updateMoveInput() {
+    if (touchState.currentControlMethod !== 'keyboard') { // CHECK
+        clientState.input.moveX = 0;
+        clientState.input.moveY = 0;
+        return;
+    }
+    let moveX = 0;
+    let moveY = 0;
+    keysPressed.forEach(key => {
+        if (moveKeys[key].dx) moveX += moveKeys[key].dx;
+        if (moveKeys[key].dy) moveY += moveKeys[key].dy;
     });
-
-
-    canvas.addEventListener('mouseup', (e) => {
-        if (clientState.currentState !== 'playing') return;
-        if (e.button === 0) {
-            clientState.input.isShooting = false;
-        }
-    });
+    clientState.input.moveX = moveX;
+    clientState.input.moveY = moveY;
 }
+
+function calculateAimVector(e) {
+    if (clientState.currentState !== 'playing' || touchState.currentControlMethod !== 'keyboard') return; // CHECK
+
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left; 
+    const mouseY = e.clientY - rect.top;
+
+    const playerScreenX = canvas.width / 2;
+    const playerScreenY = canvas.height / 2;
+
+    let shootX = mouseX - playerScreenX;
+    let shootY = mouseY - playerScreenY;
+
+    const length = Math.sqrt(shootX ** 2 + shootY ** 2);
+    if (length > 0.1) { 
+        clientState.input.shootX = shootX / length;
+        clientState.input.shootY = shootY / length;
+
+        const me = clientState.interpolatedEntities.players.get(clientState.me.id);
+        if (me) {
+            me.shootX = clientState.input.shootX;
+            me.shootY = clientState.input.shootY;
+        }
+    }
+}
+
+canvas.addEventListener('mousemove', calculateAimVector);
+
+canvas.addEventListener('mousedown', (e) => {
+    if (clientState.currentState !== 'playing' || touchState.currentControlMethod !== 'keyboard') return; // CHECK
+    if (e.button === 0) {
+        clientState.input.isShooting = true;
+    }
+});
+
+canvas.addEventListener('mouseup', (e) => {
+    if (clientState.currentState !== 'playing' || touchState.currentControlMethod !== 'keyboard') return; // CHECK
+    if (e.button === 0) {
+        clientState.input.isShooting = false;
+    }
+});
 
 
 // --- LÓGICA TÁCTIL (JOYSTICKS) ---
-if (touchState.isTouchDevice) {
-    canvas.addEventListener('touchstart', (e) => {
-        if (clientState.currentState !== 'playing') return;
-        e.preventDefault();
+// CAMBIADO: 'if (touchState.isTouchDevice)' por 'if (touchState.currentControlMethod === 'touch')'
+// (Misma lógica que arriba, los listeners se añaden pero solo actúan si el modo es 'touch')
 
+canvas.addEventListener('touchstart', (e) => {
+    if (clientState.currentState !== 'playing' || touchState.currentControlMethod !== 'touch') return; // CHECK
+    e.preventDefault();
 
-        Array.from(e.changedTouches).forEach(touch => {
-            const screenX = touch.clientX;
-            const screenY = touch.clientY;
-            const isLeftHalf = screenX < canvas.width * 0.5;
+    Array.from(e.changedTouches).forEach(touch => {
+        const screenX = touch.clientX;
+        const screenY = touch.clientY;
+        const isLeftHalf = screenX < canvas.width * 0.5;
 
-
-            if (isLeftHalf && !touchState.move.active) {
-                const move = touchState.move;
-                move.active = true;
-                move.id = touch.identifier;
-                move.centerX = screenX;
-                move.centerY = screenY;
-                move.currentX = screenX;
-                move.currentY = screenY;
-            } else if (!isLeftHalf && !touchState.aim.active) {
-                const aim = touchState.aim;
-                aim.active = true;
-                aim.id = touch.identifier;
-                aim.centerX = screenX;
-                aim.centerY = screenY;
-                aim.currentX = screenX;
-                aim.currentY = screenY;
-                clientState.input.isShooting = true;
-            }
-        });
+        if (isLeftHalf && !touchState.move.active) {
+            const move = touchState.move;
+            move.active = true;
+            move.id = touch.identifier;
+            move.centerX = screenX;
+            move.centerY = screenY;
+            move.currentX = screenX;
+            move.currentY = screenY;
+        } else if (!isLeftHalf && !touchState.aim.active) {
+            const aim = touchState.aim;
+            aim.active = true;
+            aim.id = touch.identifier;
+            aim.centerX = screenX;
+            aim.centerY = screenY;
+            aim.currentX = screenX;
+            aim.currentY = screenY;
+            clientState.input.isShooting = true;
+        }
     });
+}, { passive: false }); // Necesario para preventDefault
 
+canvas.addEventListener('touchmove', (e) => {
+    if (clientState.currentState !== 'playing' || touchState.currentControlMethod !== 'touch') return; // CHECK
+    e.preventDefault();
 
-    canvas.addEventListener('touchmove', (e) => {
-        if (clientState.currentState !== 'playing') return;
-        e.preventDefault();
+    Array.from(e.changedTouches).forEach(touch => {
+        const screenX = touch.clientX;
+        const screenY = touch.clientY;
 
+        if (touchState.move.active && touch.identifier === touchState.move.id) {
+            const move = touchState.move;
+            let dx = screenX - move.centerX;
+            let dy = screenY - move.centerY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
 
-        Array.from(e.changedTouches).forEach(touch => {
-            const screenX = touch.clientX;
-            const screenY = touch.clientY;
+            if (distance > JOYSTICK_RADIUS) {
+                dx *= JOYSTICK_RADIUS / distance;
+                dy *= JOYSTICK_RADIUS / distance;
+            }
 
+            move.currentX = move.centerX + dx;
+            move.currentY = move.centerY + dy;
+            clientState.input.moveX = dx / JOYSTICK_RADIUS;
+            clientState.input.moveY = dy / JOYSTICK_RADIUS;
+        } 
+        else if (touchState.aim.active && touch.identifier === touchState.aim.id) {
+            const aim = touchState.aim;
+            let dx = screenX - aim.centerX;
+            let dy = screenY - aim.centerY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
 
-            if (touchState.move.active && touch.identifier === touchState.move.id) {
-                const move = touchState.move;
-                let dx = screenX - move.centerX;
-                let dy = screenY - move.centerY;
-                const distance = Math.sqrt(dx * dx + dy * dy);
+            if (distance > JOYSTICK_RADIUS) {
+                dx *= JOYSTICK_RADIUS / distance;
+                dy *= JOYSTICK_RADIUS / distance;
+            }
 
+            aim.currentX = aim.centerX + dx;
+            aim.currentY = aim.centerY + dy;
 
-                if (distance > JOYSTICK_RADIUS) {
-                    dx *= JOYSTICK_RADIUS / distance;
-                    dy *= JOYSTICK_RADIUS / distance;
-                }
+            if (distance > KNOB_RADIUS / 2) { 
+                clientState.input.shootX = dx / distance;
+                clientState.input.shootY = dy / distance;
 
-
-                move.currentX = move.centerX + dx;
-                move.currentY = move.centerY + dy;
-                clientState.input.moveX = dx / JOYSTICK_RADIUS;
-                clientState.input.moveY = dy / JOYSTICK_RADIUS;
-            } 
-            else if (touchState.aim.active && touch.identifier === touchState.aim.id) {
-                const aim = touchState.aim;
-                let dx = screenX - aim.centerX;
-                let dy = screenY - aim.centerY;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-
-
-                if (distance > JOYSTICK_RADIUS) {
-                    dx *= JOYSTICK_RADIUS / distance;
-                    dy *= JOYSTICK_RADIUS / distance;
-                }
-
-
-                aim.currentX = aim.centerX + dx;
-                aim.currentY = aim.centerY + dy;
-
-
-                if (distance > KNOB_RADIUS / 2) { 
-                    clientState.input.shootX = dx / distance;
-                    clientState.input.shootY = dy / distance;
-
-
-                    const me = clientState.interpolatedEntities.players.get(clientState.me.id);
-                    if (me) {
-                        me.shootX = clientState.input.shootX;
-                        me.shootY = clientState.input.shootY;
-                    }
+                const me = clientState.interpolatedEntities.players.get(clientState.me.id);
+                if (me) {
+                    me.shootX = clientState.input.shootX;
+                    me.shootY = clientState.input.shootY;
                 }
             }
-        });
+        }
     });
+}, { passive: false }); // Necesario para preventDefault
 
+canvas.addEventListener('touchend', (e) => {
+    if (clientState.currentState !== 'playing' || touchState.currentControlMethod !== 'touch') return; // CHECK
+    e.preventDefault();
 
-    canvas.addEventListener('touchend', (e) => {
-        if (clientState.currentState !== 'playing') return;
-        e.preventDefault();
-
-
-        Array.from(e.changedTouches).forEach(touch => {
-            if (touchState.move.active && touch.identifier === touchState.move.id) {
-                touchState.move.active = false;
-                touchState.move.id = null;
-                clientState.input.moveX = 0;
-                clientState.input.moveY = 0;
-            } 
-            else if (touchState.aim.active && touch.identifier === touchState.aim.id) {
-                touchState.aim.active = false;
-                touchState.aim.id = null;
-                clientState.input.isShooting = false;
-            }
-        });
+    Array.from(e.changedTouches).forEach(touch => {
+        if (touchState.move.active && touch.identifier === touchState.move.id) {
+            touchState.move.active = false;
+            touchState.move.id = null;
+            clientState.input.moveX = 0;
+            clientState.input.moveY = 0;
+        } 
+        else if (touchState.aim.active && touch.identifier === touchState.aim.id) {
+            touchState.aim.active = false;
+            touchState.aim.id = null;
+            clientState.input.isShooting = false;
+        }
     });
-}
+}, { passive: false }); // Necesario para preventDefault
 
 
 // --- RENDERIZADO ---
@@ -469,8 +480,10 @@ function interpolateEntities(factor) {
         p_client.health = p_server.health;
         p_client.kills = p_server.kills;
 
-
-        if (!isMe || !touchState.isTouchDevice) {
+        // CAMBIADO: 'if (!isMe || !touchState.isTouchDevice)'
+        // Si no soy yo, O si soy yo y uso teclado, actualiza la mira desde el servidor.
+        // Si soy yo y uso touch, NO actualices (mi pulgar manda).
+        if (!isMe || touchState.currentControlMethod === 'keyboard') {
             p_client.shootX = p_server.shootX;
             p_client.shootY = p_server.shootY;
         }
@@ -587,8 +600,8 @@ function drawGame(deltaTime) {
 
     drawHUD(me);
 
-
-    if (touchState.isTouchDevice) {
+    // CAMBIADO: 'if (touchState.isTouchDevice)'
+    if (touchState.currentControlMethod === 'touch') {
         drawJoysticks();
     }
 }
@@ -1066,15 +1079,22 @@ document.getElementById('settingsButton').addEventListener('click', () => {
 document.getElementById('saveSettingsButton').addEventListener('click', () => {
     readConfigFromUI();
     saveConfig();
+    updateControlMethod(); // ACTUALIZAR método de control al guardar
     clientState.currentState = 'menu';
     updateUI();
 });
 
 
 document.getElementById('resetSettingsButton').addEventListener('click', () => {
+    // Guardar el controlType actual para no resetearlo
+    const currentControl = gameConfig.controlType;
     gameConfig = {...DEFAULT_CONFIG};
+    // Restaurarlo
+    gameConfig.controlType = currentControl;
+    
     applyConfigToUI();
     saveConfig();
+    updateControlMethod(); // ACTUALIZAR
 });
 
 
@@ -1095,6 +1115,6 @@ document.getElementById('backToMenuButton').addEventListener('click', () => {
 
 
 // --- INICIO ---
-loadConfig();
+loadConfig(); // Esto ahora llama a updateControlMethod() internamente
 updateUI();
 requestAnimationFrame(gameLoopRender);
