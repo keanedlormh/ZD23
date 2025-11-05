@@ -38,15 +38,15 @@
             border: 1px solid #4CAF50;
             border-radius: 10px;
             box-shadow: 0 0 25px rgba(76, 175, 80, 0.3);
-            
+
             padding: 30px;
-            
+
             /* --- MEJORAS DE RESPONSIVE --- */
             display: flex;            /* Forzar layout en columna */
             flex-direction: column;   /* Apilado vertical */
             align-items: stretch;     /* Estirar elementos al 100% de ancho */
             /* --------------------------- */
-            
+
             max-width: 500px;
             max-height: 90vh;
             width: 90%;
@@ -149,7 +149,7 @@
         #saveSettingsButton:hover:not(:disabled), #backToMenuButton:hover:not(:disabled) { 
             background-color: #3e7ab8; 
         }
-        
+
         #resetSettingsButton { background-color: #993333; }
         #resetSettingsButton:hover:not(:disabled) { background-color: #b33e3e; }
 
@@ -184,7 +184,7 @@
         #lobbyPlayerList li:last-child {
             border-bottom: none;
         }
-        
+
         #lobbyRoomId {
             font-weight: 700;
             font-size: 1.2em;
@@ -270,7 +270,7 @@
             cursor: pointer;
             transition: background-color 0.2s;
         }
-        
+
         .room-item:hover {
             background-color: rgba(76, 175, 80, 0.3);
         }
@@ -301,7 +301,7 @@
             width: auto; /* Override button defaults */
             background-color: #4CAF50;
         }
-        
+
         .room-list-actions {
             display: flex;
             gap: 10px;
@@ -382,7 +382,7 @@
         <button id="joinGameButton">Unirse por ID</button> <!-- Botón Actualizado -->
 
         <hr>
-        
+
         <button id="settingsButton">⚙️ Configuración</button>
     </div>
 
@@ -398,7 +398,7 @@
 
         <div class="settings-group">
             <h3>🎮 Jugador</h3>
-            
+
             <!-- NUEVA OPCIÓN DE CONTROL -->
             <div class="setting-item">
                 <label>Método de Control:</label>
@@ -408,7 +408,7 @@
                     <option value="keyboard">Teclado/Ratón</option>
                 </select>
             </div>
-            
+
             <div class="setting-item">
                 <label>Vida Máxima:</label>
                 <input type="number" id="setting_playerHealth" min="50" max="300" value="100">
@@ -519,7 +519,7 @@
     <!-- PANTALLA DE BUSCADOR DE SALAS (NUEVA) -->
     <div id="roomListScreen" class="menu-container" style="display: none;">
         <h2>Salas Activas</h2>
-        
+
         <div id="roomListContainer">
             <!-- Las salas se inyectarán aquí (ej: <p>Buscando...</p>) -->
         </div>
@@ -547,6 +547,3 @@
 
 </body>
 </html>
-
-
-
