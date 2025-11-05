@@ -12,7 +12,7 @@ class ServerMapGenerator {
         this.cellSize = config.cellSize || 40;
         this.numRooms = config.roomCount || 6;
         this.corridorWidth = config.corridorWidth || 3;
-        
+
         this.map = this.generateMapArray();
         this.worldSize = this.gridSize * this.cellSize;
         this.rooms = []; // Almacena las salas generadas
@@ -25,25 +25,25 @@ class ServerMapGenerator {
     generateMapArray() {
         // 1. Inicializar mapa lleno de muros
         const map = Array(this.gridSize).fill(0).map(() => Array(this.gridSize).fill(1));
-        
+
         this.rooms = [];
-        
+
         // 2. Generar salas aleatorias
         const minRoomSize = 6;
         const maxRoomSize = Math.floor(this.gridSize / 5);
-        
+
         let attempts = 0;
         const maxAttempts = 50;
-        
+
         while (this.rooms.length < this.numRooms && attempts < maxAttempts) {
             const roomW = minRoomSize + Math.floor(Math.random() * (maxRoomSize - minRoomSize));
             const roomH = minRoomSize + Math.floor(Math.random() * (maxRoomSize - minRoomSize));
-            
+
             const roomX = 2 + Math.floor(Math.random() * (this.gridSize - roomW - 4));
             const roomY = 2 + Math.floor(Math.random() * (this.gridSize - roomH - 4));
-            
+
             const newRoom = { x: roomX, y: roomY, w: roomW, h: roomH };
-            
+
             // Verificar que no se superponga con otras salas
             let overlaps = false;
             for (const room of this.rooms) {
@@ -52,27 +52,27 @@ class ServerMapGenerator {
                     break;
                 }
             }
-            
+
             if (!overlaps) {
                 this.rooms.push(newRoom);
                 this.carveRoom(map, newRoom);
             }
-            
+
             attempts++;
         }
-        
+
         // 3. Conectar las salas con pasillos
         for (let i = 0; i < this.rooms.length - 1; i++) {
             const roomA = this.rooms[i];
             const roomB = this.rooms[i + 1];
             this.connectRooms(map, roomA, roomB);
         }
-        
+
         // 4. Conectar la primera con la última para crear más caminos
         if (this.rooms.length > 2) {
             this.connectRooms(map, this.rooms[0], this.rooms[this.rooms.length - 1]);
         }
-        
+
         // 5. Añadir conexiones adicionales aleatorias para más complejidad
         const extraConnections = Math.floor(this.rooms.length / 3);
         for (let i = 0; i < extraConnections; i++) {
@@ -82,7 +82,7 @@ class ServerMapGenerator {
                 this.connectRooms(map, roomA, roomB);
             }
         }
-        
+
         return map;
     }
 
@@ -196,7 +196,7 @@ class ServerMapGenerator {
                 y: (room.y + room.h / 2) * this.cellSize
             };
         }
-        
+
         // Fallback: Buscar la PRIMERA celda abierta (0)
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
@@ -227,7 +227,7 @@ class ServerMapGenerator {
             const room = this.rooms[Math.floor(Math.random() * this.rooms.length)];
             const x = room.x + 1 + Math.floor(Math.random() * (room.w - 2));
             const y = room.y + 1 + Math.floor(Math.random() * (room.h - 2));
-            
+
             if (this.map[y][x] === 0) {
                 return {
                     x: x * this.cellSize + this.cellSize / 2,
@@ -235,15 +235,15 @@ class ServerMapGenerator {
                 };
             }
         }
-        
+
         // Si falla, buscar cualquier celda abierta
         let attempts = 0;
         const maxAttempts = 100;
-        
+
         while (attempts < maxAttempts) {
             const x = Math.floor(Math.random() * this.gridSize);
             const y = Math.floor(Math.random() * this.gridSize);
-            
+
             if (this.map[y][x] === 0) {
                 return {
                     x: x * this.cellSize + this.cellSize / 2,
@@ -252,7 +252,7 @@ class ServerMapGenerator {
             }
             attempts++;
         }
-        
+
         return this.getSpawnPoint(); // Fallback
     }
 
