@@ -1,301 +1,215 @@
 /**
- * server/serverMapGenerator.js - ACTUALIZADO
- * - Añadida una función helper 'isValid(x, y)' para que 
- * la lógica del juego (zombies) pueda comprobar
- * fácilmente si una celda de la cuadrícula es transitable.
+ * client/js/entities.js
+ * Contiene las clases de las entidades del cliente.
+ * Su función principal es el DIBUJO (renderizado) de la posición y estado
+ * que es determinado por el servidor. No tienen lógica de física local.
  */
 
+// --- 1. ENTIDAD BASE PARA JUGADORES Y ZOMBIES ---
 
-class ServerMapGenerator {
-    constructor(config = {}) {
-        this.gridSize = config.mapSize || 60;
-        this.cellSize = config.cellSize || 40;
-        this.numRooms = config.roomCount || 6;
-        this.corridorWidth = config.corridorWidth || 3;
-        
-        this.map = this.generateMapArray();
-        this.worldSize = this.gridSize * this.cellSize;
-        this.rooms = []; // Almacena las salas generadas
-    }
+/**
+ * Clase genérica para dibujar entidades circulares.
+ */
+class Entity {
+    constructor(id, x, y, radius, color) {
+        this.id = id;
+        this.x = x;
+        this.y = y;
+        this.radius = radius;
+        this.color = color;
 
-
-    /**
-     * Genera un mapa con salas conectadas por pasillos
-     */
-    generateMapArray() {
-        // 1. Inicializar mapa lleno de muros
-        const map = Array(this.gridSize).fill(0).map(() => Array(this.gridSize).fill(1));
-        
-        this.rooms = [];
-        
-        // 2. Generar salas aleatorias
-        const minRoomSize = 6;
-        const maxRoomSize = Math.floor(this.gridSize / 5);
-        
-        let attempts = 0;
-        const maxAttempts = 50;
-        
-        while (this.rooms.length < this.numRooms && attempts < maxAttempts) {
-            const roomW = minRoomSize + Math.floor(Math.random() * (maxRoomSize - minRoomSize));
-            const roomH = minRoomSize + Math.floor(Math.random() * (maxRoomSize - minRoomSize));
-            
-            const roomX = 2 + Math.floor(Math.random() * (this.gridSize - roomW - 4));
-            const roomY = 2 + Math.floor(Math.random() * (this.gridSize - roomH - 4));
-            
-            const newRoom = { x: roomX, y: roomY, w: roomW, h: roomH };
-            
-            // Verificar que no se superponga con otras salas
-            let overlaps = false;
-            for (const room of this.rooms) {
-                if (this.roomsOverlap(newRoom, room)) {
-                    overlaps = true;
-                    break;
-                }
-            }
-            
-            if (!overlaps) {
-                this.rooms.push(newRoom);
-                this.carveRoom(map, newRoom);
-            }
-            
-            attempts++;
-        }
-        
-        // 3. Conectar las salas con pasillos
-        for (let i = 0; i < this.rooms.length - 1; i++) {
-            const roomA = this.rooms[i];
-            const roomB = this.rooms[i + 1];
-            this.connectRooms(map, roomA, roomB);
-        }
-        
-        // 4. Conectar la primera con la última para crear más caminos
-        if (this.rooms.length > 2) {
-            this.connectRooms(map, this.rooms[0], this.rooms[this.rooms.length - 1]);
-        }
-        
-        // 5. Añadir conexiones adicionales aleatorias para más complejidad
-        const extraConnections = Math.floor(this.rooms.length / 3);
-        for (let i = 0; i < extraConnections; i++) {
-            const roomA = this.rooms[Math.floor(Math.random() * this.rooms.length)];
-            const roomB = this.rooms[Math.floor(Math.random() * this.rooms.length)];
-            if (roomA !== roomB) {
-                this.connectRooms(map, roomA, roomB);
-            }
-        }
-        
-        return map;
-    }
-
-
-    /**
-     * Verifica si dos salas se superponen (con margen de seguridad)
-     */
-    roomsOverlap(roomA, roomB) {
-        const margin = 3; // Margen entre salas
-        return !(
-            roomA.x + roomA.w + margin < roomB.x ||
-            roomB.x + roomB.w + margin < roomA.x ||
-            roomA.y + roomA.h + margin < roomB.y ||
-            roomB.y + roomB.h + margin < roomA.y
-        );
-    }
-
-
-    /**
-     * Crea una sala (espacio abierto) en el mapa
-     */
-    carveRoom(map, room) {
-        for (let y = room.y; y < room.y + room.h; y++) {
-            for (let x = room.x; x < room.x + room.w; x++) {
-                if (y >= 0 && y < this.gridSize && x >= 0 && x < this.gridSize) {
-                    map[y][x] = 0;
-                }
-            }
-        }
-    }
-
-
-    /**
-     * Conecta dos salas con un pasillo en forma de L
-     */
-    connectRooms(map, roomA, roomB) {
-        // Centros de las salas
-        const centerA = {
-            x: Math.floor(roomA.x + roomA.w / 2),
-            y: Math.floor(roomA.y + roomA.h / 2)
-        };
-        const centerB = {
-            x: Math.floor(roomB.x + roomB.w / 2),
-            y: Math.floor(roomB.y + roomB.h / 2)
-        };
-
-
-        // Decidir aleatoriamente si ir primero horizontal o vertical
-        if (Math.random() < 0.5) {
-            // Horizontal primero, luego vertical
-            this.carveHorizontalCorridor(map, centerA.x, centerB.x, centerA.y);
-            this.carveVerticalCorridor(map, centerA.y, centerB.y, centerB.x);
-        } else {
-            // Vertical primero, luego horizontal
-            this.carveVerticalCorridor(map, centerA.y, centerB.y, centerA.x);
-            this.carveHorizontalCorridor(map, centerA.x, centerB.x, centerB.y);
-        }
-    }
-
-
-    /**
-     * Crea un pasillo horizontal con el ancho configurado
-     */
-    carveHorizontalCorridor(map, x1, x2, y) {
-        const minX = Math.min(x1, x2);
-        const maxX = Math.max(x1, x2);
-        const offset = Math.floor(this.corridorWidth / 2);
-
-
-        for (let x = minX; x <= maxX; x++) {
-            for (let dy = -offset; dy <= offset; dy++) {
-                const ny = y + dy;
-                if (ny >= 0 && ny < this.gridSize && x >= 0 && x < this.gridSize) {
-                    map[ny][x] = 0;
-                }
-            }
-        }
-    }
-
-
-    /**
-     * Crea un pasillo vertical con el ancho configurado
-     */
-    carveVerticalCorridor(map, y1, y2, x) {
-        const minY = Math.min(y1, y2);
-        const maxY = Math.max(y1, y2);
-        const offset = Math.floor(this.corridorWidth / 2);
-
-
-        for (let y = minY; y <= maxY; y++) {
-            for (let dx = -offset; dx <= offset; dx++) {
-                const nx = x + dx;
-                if (y >= 0 && y < this.gridSize && nx >= 0 && nx < this.gridSize) {
-                    map[y][nx] = 0;
-                }
-            }
-        }
-    }
-
-
-    /**
-     * Obtiene el punto de spawn (centro de la primera sala)
-     * CORREGIDO: Ahora busca activamente la primera celda abierta
-     * si la sala[0] por algún casual no existe.
-     */
-    getSpawnPoint() {
-        if (this.rooms.length > 0) {
-            const room = this.rooms[0];
-            return {
-                x: (room.x + room.w / 2) * this.cellSize,
-                y: (room.y + room.h / 2) * this.cellSize
-            };
-        }
-        
-        // Fallback: Buscar la PRIMERA celda abierta (0)
-        for (let y = 0; y < this.gridSize; y++) {
-            for (let x = 0; x < this.gridSize; x++) {
-                if (this.map[y][x] === 0) {
-                    return {
-                        x: x * this.cellSize + this.cellSize / 2,
-                        y: y * this.cellSize + this.cellSize / 2
-                    };
-                }
-            }
-        }
-
-        // Si todo falla (mapa sólido?)
-        const center = Math.floor(this.gridSize / 2);
-        return {
-            x: center * this.cellSize + this.cellSize / 2,
-            y: center * this.cellSize + this.cellSize / 2
-        };
-    }
-
-
-    /**
-     * Obtiene una posición aleatoria en una celda abierta
-     */
-    getRandomOpenCellPosition() {
-        // Intentar primero obtener una posición de una sala aleatoria
-        if (this.rooms.length > 0 && Math.random() < 0.7) {
-            const room = this.rooms[Math.floor(Math.random() * this.rooms.length)];
-            const x = room.x + 1 + Math.floor(Math.random() * (room.w - 2));
-            const y = room.y + 1 + Math.floor(Math.random() * (room.h - 2));
-            
-            if (this.map[y][x] === 0) {
-                return {
-                    x: x * this.cellSize + this.cellSize / 2,
-                    y: y * this.cellSize + this.cellSize / 2
-                };
-            }
-        }
-        
-        // Si falla, buscar cualquier celda abierta
-        let attempts = 0;
-        const maxAttempts = 100;
-        
-        while (attempts < maxAttempts) {
-            const x = Math.floor(Math.random() * this.gridSize);
-            const y = Math.floor(Math.random() * this.gridSize);
-            
-            if (this.map[y][x] === 0) {
-                return {
-                    x: x * this.cellSize + this.cellSize / 2,
-                    y: y * this.cellSize + this.cellSize / 2
-                };
-            }
-            attempts++;
-        }
-        
-        return this.getSpawnPoint(); // Fallback
-    }
-
-
-    /**
-     * Genera un grid de navegación para pathfinding
-     * Retorna una matriz donde 0 = transitable, 1 = muro
-     */
-    getNavigationGrid() {
-        return this.map.map(row => [...row]);
+        // Propiedades para interpolación
+        this.prevX = x; 
+        this.prevY = y;
+        this.targetX = x;
+        this.targetY = y;
     }
 
     /**
-     * NUEVO: Comprueba si una celda de la cuadrícula es válida y transitable.
+     * Dibuja la entidad en el canvas.
      */
-    isValid(x, y) {
-        return x >= 0 && x < this.gridSize &&
-               y >= 0 && y < this.gridSize &&
-               this.map[y][x] === 0; // 0 = transitable
-    }
-
-
-    /**
-     * Convierte coordenadas del mundo a coordenadas de grid
-     */
-    worldToGrid(worldX, worldY) {
-        return {
-            x: Math.floor(worldX / this.cellSize),
-            y: Math.floor(worldY / this.cellSize)
-        };
-    }
-
-
-    /**
-     * Convierte coordenadas de grid a coordenadas del mundo (centro de la celda)
-     */
-    gridToWorld(gridX, gridY) {
-        return {
-            x: gridX * this.cellSize + this.cellSize / 2,
-            y: gridY * this.cellSize + this.cellSize / 2
-        };
+    draw(ctx) {
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
     }
 }
 
+// --- 2. JUGADOR ---
 
-module.exports = ServerMapGenerator;
+/**
+ * Representa al jugador local o a un compañero.
+ */
+class Player extends Entity {
+    constructor(id, x, y, isMe, name = "Jugador") {
+        const radius = 15;
+        // Colores más visibles y distintivos
+        const color = isMe ? '#2596be' : '#e34747'; // Azul: local, Rojo oscuro: otros
+        super(id, x, y, radius, color);
+
+        this.isMe = isMe;
+        this.name = name;
+        this.health = 100;
+        this.kills = 0;
+        this.shootX = 1; // Dirección de puntería (por defecto a la derecha)
+        this.shootY = 0;
+    }
+
+    /**
+     * Dibuja el jugador, la barra de vida y el nombre, y el indicador de puntería.
+     */
+    draw(ctx) {
+        // 1. DIBUJAR CUERPO
+        super.draw(ctx);
+
+        const worldX = this.x;
+        const worldY = this.y;
+
+        // 2. DIBUJAR INDICADOR DE PUNTERÍA (Solo si soy yo)
+        if (this.isMe) {
+            ctx.strokeStyle = 'cyan';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            // Inicia en el borde del jugador
+            const startX = worldX + this.shootX * this.radius;
+            const startY = worldY + this.shootY * this.radius;
+            // Termina un poco más lejos
+            const endX = worldX + this.shootX * (this.radius + 15);
+            const endY = worldY + this.shootY * (this.radius + 15);
+
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+        }
+
+        // 3. DIBUJAR NOMBRE
+        ctx.fillStyle = this.isMe ? '#00FFFF' : '#FFF'; // Cyan para ti, Blanco para otros
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(this.name, worldX, worldY - this.radius - 12);
+
+        // 4. DIBUJAR BARRA DE SALUD
+        const barWidth = this.radius * 2; // 30px
+        const barHeight = 4;
+        const healthRatio = this.health / 100;
+        const barY = worldY + this.radius + 8; // Posicionado debajo
+
+        // Fondo de la barra
+        ctx.fillStyle = '#555';
+        ctx.fillRect(worldX - this.radius, barY, barWidth, barHeight);
+
+        // Relleno de salud
+        ctx.fillStyle = healthRatio > 0.4 ? '#4CAF50' : (healthRatio > 0.15 ? '#FFC107' : '#F44336');
+        ctx.fillRect(worldX - this.radius, barY, barWidth * healthRatio, barHeight);
+    }
+}
+
+// --- 3. ZOMBIE ---
+
+/**
+ * Representa a un enemigo.
+ */
+class Zombie extends Entity {
+    constructor(id, x, y, maxHealth) {
+        const radius = 14;
+        const color = '#38761d'; // Verde oscuro
+        super(id, x, y, radius, color);
+        this.maxHealth = maxHealth;
+        this.health = maxHealth;
+    }
+
+    draw(ctx) {
+        // 1. DIBUJAR CUERPO
+        super.draw(ctx);
+
+        // Indicador central
+        ctx.fillStyle = 'black';
+        ctx.font = '10px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Z', this.x, this.y + 4);
+
+        // 2. DIBUJAR BARRA DE SALUD DEL ZOMBI (Pequeña y roja)
+        const barWidth = 20; 
+        const barHeight = 3;
+        const healthRatio = this.health / this.maxHealth;
+        const barY = this.y - this.radius - 8; 
+
+        // Fondo de la barra
+        ctx.fillStyle = '#222';
+        ctx.fillRect(this.x - barWidth / 2, barY, barWidth, barHeight);
+
+        // Relleno de salud (si tiene más de 0)
+        if (healthRatio > 0) {
+            ctx.fillStyle = '#FF4500'; // Rojo-Naranja
+            ctx.fillRect(this.x - barWidth / 2, barY, barWidth * healthRatio, barHeight);
+        }
+    }
+}
+
+// --- 4. BALA ---
+
+/**
+ * Representa una bala. 
+ */
+class Bullet extends Entity {
+    constructor(id, x, y) {
+        const radius = 4;
+        const color = '#ffeb3b'; // Amarillo brillante
+        super(id, x, y, radius, color);
+    }
+}
+
+// --- 5. GENERADOR DE MAPAS (SOLO PARA DIBUJO EN CLIENTE) ---
+
+/**
+ * Clase para manejar el dibujo del entorno estático.
+ */
+class MapRenderer {
+    constructor(mapArray, cellSize = 40) {
+        this.map = mapArray; 
+        this.size = mapArray.length;
+        this.cellSize = cellSize; 
+        this.mapWorldSize = this.size * this.cellSize;
+    }
+
+    /**
+     * Dibuja el mapa completo.
+     */
+    draw(ctx, cameraX, cameraY) {
+        if (this.map.length === 0) return;
+
+        // Rango de celdas visibles para optimización
+        const canvasWidth = ctx.canvas.width / window.SCALE;
+        const canvasHeight = ctx.canvas.height / window.SCALE;
+
+        const startX = Math.max(0, Math.floor(cameraX / this.cellSize));
+        const startY = Math.max(0, Math.floor(cameraY / this.cellSize));
+        const endX = Math.min(this.size, Math.ceil((cameraX + canvasWidth) / this.cellSize));
+        const endY = Math.min(this.size, Math.ceil((cameraY + canvasHeight) / this.cellSize));
+
+        for (let y = startY; y < endY; y++) {
+            for (let x = startX; x < endX; x++) {
+                const worldX = x * this.cellSize;
+                const worldY = y * this.cellSize;
+
+                // Suelo 
+                ctx.fillStyle = '#1a1a1a'; 
+                ctx.fillRect(worldX, worldY, this.cellSize, this.cellSize);
+
+                // Muros (1)
+                if (this.map[y][x] === 1) {
+                    ctx.fillStyle = '#444'; 
+                    ctx.fillRect(worldX, worldY, this.cellSize, this.cellSize);
+                }
+            }
+        }
+    }
+}
+
+// Exportar clases para uso global (ya que no usamos módulos ES6)
+window.Player = Player;
+window.Zombie = Zombie;
+window.Bullet = Bullet;
+window.MapRenderer = MapRenderer;
+window.SCALE = 1.0;
