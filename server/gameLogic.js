@@ -71,7 +71,7 @@ class ServerZombie extends ServerEntity {
         this.lastAttackTime = 0;
         this.attackDamage = config.zombieAttack;
         this.attackCooldown = config.zombieAttackCooldown;
-        
+
         // Direcciones (4-way) para el flow field
         this.directions = [
             { x: 0, y: -1 },  // Arriba
@@ -125,7 +125,7 @@ class ServerZombie extends ServerEntity {
         }
 
         // 3. Lógica de Movimiento (Seguir el CostMap)
-        
+
         // Obtener la celda actual del zombie
         const currentGrid = mapGenerator.worldToGrid(this.x, this.y);
         if (!mapGenerator.isValid(currentGrid.x, currentGrid.y)) {
@@ -163,7 +163,7 @@ class ServerZombie extends ServerEntity {
             // Calcular vector de movimiento hacia el centro de esa celda
             const moveDx = targetWorldPos.x - this.x;
             const moveDy = targetWorldPos.y - this.y;
-            
+
             const moveDist = Math.sqrt(moveDx * moveDx + moveDy * moveDy);
 
             if (moveDist > 0) {
@@ -175,7 +175,7 @@ class ServerZombie extends ServerEntity {
                 };
             }
         }
-        
+
         return null; // No hay movimiento
     }
 }
@@ -187,22 +187,22 @@ class ServerZombie extends ServerEntity {
 class GameLogic {
     constructor(playerData, config) {
         this.config = config;
-        
+
         this.map = new ServerMapGenerator({
             mapSize: config.mapSize,
             cellSize: 40,
             roomCount: config.roomCount,
             corridorWidth: config.corridorWidth
         });
-        
+
         this.pathfinder = new Pathfinder(this.map.getNavigationGrid(), this.map.cellSize);
-        
+
         this.entities = {
             players: new Map(), 
             zombies: new Map(), 
             bullets: new Map()
         };
-        
+
         this.score = 0;
         this.wave = 1;
         this.running = true;
@@ -278,7 +278,7 @@ class GameLogic {
         const dy = entityB.y - entityA.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         const minDistance = entityA.radius + entityB.radius;
-        
+
         return distance < minDistance;
     }
 
@@ -343,7 +343,7 @@ class GameLogic {
 
             const oldX = player.x;
             const oldY = player.y;
-            
+
             const moveX = player.input.moveX * player.speed;
             const moveY = player.input.moveY * player.speed;
 
@@ -373,7 +373,7 @@ class GameLogic {
 
             // La IA ahora solo devuelve un vector, no mueve al zombie
             const moveVector = zombie.updateAI(this.entities.players, this.playerCostMap, this.map, deltaTime);
-            
+
             if (moveVector) {
                 // Mover en X
                 zombie.x += moveVector.dx;
