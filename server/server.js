@@ -194,7 +194,7 @@ io.on('connection', (socket) => {
                 hostName: game.players.find(p => p.isHost)?.name || 'Desconocido',
                 playerCount: game.players.length
             }));
-        
+
         // Enviar la lista solo al cliente que la pidió
         socket.emit('gameList', joinableGames);
     });
@@ -232,7 +232,7 @@ io.on('connection', (socket) => {
 
 
         const playerData = game.players.map(p => ({ id: p.id, name: p.name }));
-        
+
         // Pasar configuracion al GameLogic
         game.gameLogic = new GameLogic(playerData, game.config);
         game.status = 'playing';
