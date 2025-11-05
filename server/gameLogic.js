@@ -1,9 +1,22 @@
 /**
  * server/gameLogic.js - ACTUALIZADO
- * - Lógica de "Enjambre Estable": los zombies ahora "recuerdan" su punto de
- * offset aleatorio y no lo cambian cada 500ms, evitando el zigzag.
- * - El camino se recalcula si el jugador se mueve, pero el *objetivo*
- * relativo al jugador sigue siendo el mismo.
+ *
+ * ¡GRAN CAMBIO! Se ha implementado una nueva lógica de colisiones
+ * para solucionar el "atasco en las esquinas".
+ *
+ * 1. `checkMapCollision(entity)`:
+ * - Reescrita para ser más precisa para círculos.
+ * - Ahora comprueba 5 puntos: Centro, Arriba, Abajo, Izquierda, Derecha.
+ *
+ * 2. `ServerZombie.updateAI(...)`:
+ * - Modificada para NO mover al zombie (`this.x = ...`).
+ * - Ahora DEVUELVE el vector de movimiento deseado (ej: {dx: 0, dy: -3}).
+ *
+ * 3. `GameLogic.update()`:
+ * - Implementa "COLISIÓN CON DESLIZAMIENTO" (Sliding Collision).
+ * - Aplica el movimiento del vector en el eje X y en el eje Y por separado.
+ * - Si un eje choca, se resetea, pero el otro puede continuar.
+ * - ¡Esto permite a los zombies "deslizarse" por muros y esquinas!
  */
 
 const ServerMapGenerator = require('./serverMapGenerator'); 
@@ -29,6 +42,7 @@ class ServerBullet extends ServerEntity {
         this.damage = damage;
         this.ownerId = id.split('_')[1];
     }
+
     updatePosition() {
         this.x += this.dx * this.speed;
         this.y += this.dy * this.speed;
@@ -58,237 +72,216 @@ class ServerZombie extends ServerEntity {
         this.attackDamage = config.zombieAttack;
         this.attackCooldown = config.zombieAttackCooldown;
         
-        // Pathfinding
-        this.path = [];
-        this.currentPathIndex = 0;
-        this.pathUpdateTimer = 0;
-        this.pathUpdateInterval = 500; // Recalcular ruta cada 500ms
-        this.stuckTimer = 0;
-        this.lastPosition = { x, y };
-
-        // *** NUEVO: Lógica de Enjambre Estable ***
-        this.targetOffset = { x: 0, y: 0 }; // El offset (x,y) recordado
-        this.currentTargetId = null;        // El ID del jugador que persigue
-        this.needsNewOffset = true;         // Flag para recalcular el offset
+        // Direcciones (4-way) para el flow field
+        this.directions = [
+            { x: 0, y: -1 },  // Arriba
+            { x: 1, y: 0 },   // Derecha
+            { x: 0, y: 1 },   // Abajo
+            { x: -1, y: 0 }   // Izquierda
+        ];
     }
 
     /**
-     * IA mejorada con pathfinding y lógica de desatasco
+     * IA REDISEÑADA: Sigue el Flow Field (playerCostMap)
+     * MODIFICADO: Ahora DEVUELVE un vector de movimiento {dx, dy}
+     *
+     * @param {Map} players - Mapa de jugadores (para atacar)
+     * @param {Array} costMap - El mapa 2D de costes generado por el Pathfinder
+     * @param {ServerMapGenerator} mapGenerator - Para helpers de coordenadas
+     * @param {number} deltaTime - Tiempo desde el último frame
+     * @returns {Object} Un vector de movimiento {dx, dy} o null
      */
-    updateAI(players, pathfinder, mapGenerator, deltaTime) {
-        if (players.size === 0) return;
+    updateAI(players, costMap, mapGenerator, deltaTime) {
+        if (players.size === 0 || !costMap) return null;
 
-        // 1. Encontrar el jugador vivo más cercano
+        // 1. Encontrar el jugador vivo más cercano (SOLO para atacar)
         let target = null;
         let minDistanceSq = Infinity;
+
         players.forEach(player => {
             if (player.health > 0) {
                 const dx = player.x - this.x;
                 const dy = player.y - this.y;
                 const distSq = dx * dx + dy * dy;
+
                 if (distSq < minDistanceSq) {
                     minDistanceSq = distSq;
                     target = player;
                 }
             }
         });
-        if (!target) return;
 
-        // *** NUEVO: Comprobar si el objetivo ha cambiado ***
-        if (this.currentTargetId !== target.id) {
-            this.currentTargetId = target.id;
-            this.needsNewOffset = true; // Forzar un nuevo offset para el nuevo objetivo
-            this.path = []; // Limpiar el camino antiguo
-        }
+        if (!target) return null;
 
-        // 2. Lógica de Ataque
-        const dx = target.x - this.x;
-        const dy = target.y - this.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        if (distance <= this.radius + target.radius + 15) { // Aumentado el rango de ataque
+        // 2. Lógica de Ataque (si está lo suficientemente cerca)
+        const distance = Math.sqrt(minDistanceSq);
+        if (distance <= this.radius + target.radius + 10) {
             const currentTime = Date.now();
             if (currentTime - this.lastAttackTime > this.attackCooldown) {
                 target.health = Math.max(0, target.health - this.attackDamage);
                 this.lastAttackTime = currentTime;
             }
-            return; // Si está atacando, no necesita moverse
+            return null; // No te muevas si estás atacando
         }
 
-        // 3. Lógica de Atasco
-        this.pathUpdateTimer += deltaTime;
-        const movedDistance = Math.sqrt(
-            (this.x - this.lastPosition.x) ** 2 + 
-            (this.y - this.lastPosition.y) ** 2
-        );
-        if (movedDistance < this.speed * 0.5) { 
-            this.stuckTimer += deltaTime;
-        } else {
-            this.stuckTimer = 0;
-            this.lastPosition = { x: this.x, y: this.y };
-        }
-
-        // 4. Decidir si recalcular el camino
-        let forceRecalculate = false;
-
-        if (this.stuckTimer > 1000) {
-            this.needsNewOffset = true; // Quedó atascado, buscar un nuevo punto
-            forceRecalculate = true;
-            this.stuckTimer = 0;
-            // console.log(`[AI] Zombie ${this.id} atascado. Buscando nuevo offset.`);
-        }
+        // 3. Lógica de Movimiento (Seguir el CostMap)
         
-        if (this.pathUpdateTimer > this.pathUpdateInterval) {
-            forceRecalculate = true; // El jugador se ha movido, recalcular
-            this.pathUpdateTimer = 0;
+        // Obtener la celda actual del zombie
+        const currentGrid = mapGenerator.worldToGrid(this.x, this.y);
+        if (!mapGenerator.isValid(currentGrid.x, currentGrid.y)) {
+             // El zombie está atascado o fuera del mapa
+            return null;
         }
 
-        if (forceRecalculate || this.path.length === 0) {
-            this.calculatePath(target, pathfinder, mapGenerator);
-        }
+        // Encontrar el mejor vecino (coste más bajo)
+        let bestCost = costMap[currentGrid.y][currentGrid.x];
+        let bestDir = { dx: 0, dy: 0 }; // Dirección (en cuadrícula) al mejor vecino
 
-        // 5. Lógica de seguimiento de camino (fluida)
-        if (this.path.length > 0) {
-            const nextWaypointNode = this.path[this.currentPathIndex];
-            
-            if (nextWaypointNode) {
-                const waypointWorld = mapGenerator.gridToWorld(nextWaypointNode.x, nextWaypointNode.y);
-                const wpDx = waypointWorld.x - this.x;
-                const wpDy = waypointWorld.y - this.y;
-                const wpDist = Math.sqrt(wpDx * wpDx + wpDy * wpDy);
+        for (const dir of this.directions) {
+            const newX = currentGrid.x + dir.x;
+            const newY = currentGrid.y + dir.y;
 
-                const moveDistance = this.speed; 
-
-                if (wpDist <= moveDistance) {
-                    this.x = waypointWorld.x;
-                    this.y = waypointWorld.y;
-                    this.currentPathIndex++;
-                    
-                    if (this.currentPathIndex >= this.path.length) {
-                        this.path = [];
-                        this.currentPathIndex = 0;
-                    }
-                } else {
-                    const nx = wpDx / wpDist;
-                    const ny = wpDy / wpDist;
-                    this.x += nx * moveDistance;
-                    this.y += ny * moveDistance;
+            // Comprobar si el vecino es válido y transitable
+            if (mapGenerator.isValid(newX, newY)) {
+                const newCost = costMap[newY][newX];
+                // Si esta celda es "mejor" (más cercana al jugador), tomarla
+                if (newCost < bestCost) {
+                    bestCost = newCost;
+                    bestDir = { dx: dir.x, dy: dir.y };
                 }
             }
-        } else {
-            // Fallback: moverse directamente (solo si no hay camino)
-            if (distance > this.radius + target.radius) {
-                const nx = dx / distance;
-                const ny = dy / distance;
-                this.x += nx * this.speed;
-                this.y += ny * this.speed;
-            }
-        }
-    }
-
-    /**
-     * Calcula un nuevo camino hacia el objetivo usando A*
-     * *** AHORA CON LÓGICA DE ENJAMBRE ESTABLE ***
-     */
-    calculatePath(target, pathfinder, mapGenerator) {
-        const startGrid = mapGenerator.worldToGrid(this.x, this.y);
-
-        // *** NUEVA LÓGICA DE ENJAMBRE (SWARM) ESTABLE ***
-        if (this.needsNewOffset) {
-            const offset = mapGenerator.cellSize * 3; // Apuntar a un área de +/- 3 celdas
-            this.targetOffset.x = (Math.random() - 0.5) * offset;
-            this.targetOffset.y = (Math.random() - 0.5) * offset;
-            this.needsNewOffset = false; // Marcar que ya tenemos un offset
         }
 
-        // Apuntar al offset *recordado*
-        const targetX = target.x + this.targetOffset.x;
-        const targetY = target.y + this.targetOffset.y;
-        
-        const goalGrid = mapGenerator.worldToGrid(targetX, targetY);
+        // 4. Calcular el vector de movimiento
+        if (bestDir.dx !== 0 || bestDir.dy !== 0) {
+            // Objetivo: moverse al *centro* de la celda vecina
+            const targetCellX = currentGrid.x + bestDir.dx;
+            const targetCellY = currentGrid.y + bestDir.dy;
 
-        // Validar el nuevo goalGrid
-        let finalGoalGrid = goalGrid;
-        if (!pathfinder.isValid(goalGrid)) {
-            finalGoalGrid = mapGenerator.worldToGrid(target.x, target.y); // Fallback al centro del jugador
-            if (!pathfinder.isValid(finalGoalGrid)) {
-                this.path = []; this.currentPathIndex = 0; return;
+            const targetWorldPos = mapGenerator.gridToWorld(targetCellX, targetCellY);
+
+            // Calcular vector de movimiento hacia el centro de esa celda
+            const moveDx = targetWorldPos.x - this.x;
+            const moveDy = targetWorldPos.y - this.y;
+            
+            const moveDist = Math.sqrt(moveDx * moveDx + moveDy * moveDy);
+
+            if (moveDist > 0) {
+                // Normalizar y aplicar velocidad
+                // Devolvemos el vector de movimiento completo
+                return {
+                    dx: (moveDx / moveDist) * this.speed,
+                    dy: (moveDy / moveDist) * this.speed
+                };
             }
         }
         
-        const path = pathfinder.findPath(startGrid, finalGoalGrid);
-        
-        if (path && path.length > 1) {
-            this.path = path; // Usar el camino puro de A*
-            this.currentPathIndex = 0; 
-        } else {
-            this.path = [];
-            this.currentPathIndex = 0;
-        }
+        return null; // No hay movimiento
     }
 }
 
+
 // --- CLASE PRINCIPAL: GAMELOGIC ---
-// (El resto de esta clase no necesita cambios)
+
 
 class GameLogic {
     constructor(playerData, config) {
         this.config = config;
+        
         this.map = new ServerMapGenerator({
             mapSize: config.mapSize,
             cellSize: 40,
             roomCount: config.roomCount,
             corridorWidth: config.corridorWidth
         });
+        
         this.pathfinder = new Pathfinder(this.map.getNavigationGrid(), this.map.cellSize);
+        
         this.entities = {
             players: new Map(), 
             zombies: new Map(), 
             bullets: new Map()
         };
+        
         this.score = 0;
         this.wave = 1;
         this.running = true;
         this.lastUpdateTime = Date.now();
 
+        this.playerCostMap = null; 
+        this.pathfindUpdateTimer = 0;
+        this.pathfindUpdateInterval = 500; 
+
         const spawn = this.map.getSpawnPoint();
         playerData.forEach(p => {
             this.entities.players.set(p.id, new ServerPlayer(p.id, spawn.x, spawn.y, p.name, config));
         });
+
         this.spawnZombies(config.initialZombies);
+        this.updatePlayerCostMap();
     }
 
-    checkMapCollision(entity) {
-        const cellSize = this.map.cellSize;
-        const radius = entity.radius;
-        const checkPoints = [
-            { x: entity.x, y: entity.y },
-            { x: entity.x + radius, y: entity.y },
-            { x: entity.x - radius, y: entity.y },
-            { x: entity.x, y: entity.y + radius },
-            { x: entity.x, y: entity.y - radius }
-        ];
-        for (const p of checkPoints) {
-            const tileX = Math.floor(p.x / cellSize);
-            const tileY = Math.floor(p.y / cellSize);
-            if (p.x < 0 || p.x > this.map.worldSize || p.y < 0 || p.y > this.map.worldSize) {
-                return true; 
-            }
-            if (tileY >= 0 && tileY < this.map.gridSize && tileX >= 0 && tileX < this.map.gridSize) {
-                if (this.map.map[tileY][tileX] === 1) {
-                    return true;
-                }
+    /**
+     * Genera el mapa de costes (flow field) para los zombies.
+     */
+    updatePlayerCostMap() {
+        let targetPlayer = null;
+        for (const player of this.entities.players.values()) {
+            if (player.health > 0) {
+                targetPlayer = player;
+                break; 
             }
         }
-        return false;
+
+        if (targetPlayer) {
+            const gridPos = this.map.worldToGrid(targetPlayer.x, targetPlayer.y);
+            this.playerCostMap = this.pathfinder.generatePlayerCostMap(gridPos);
+        } else {
+            this.playerCostMap = null;
+        }
     }
 
+
+    /**
+     * ¡FUNCIÓN DE COLISIÓN MEJORADA!
+     * Comprueba 5 puntos (Centro + N,S,E,W) para una colisión circular más precisa.
+     */
+    checkMapCollision(entity) {
+        const radius = entity.radius;
+
+        // Puntos a comprobar (Centro + 4 bordes del círculo)
+        const checkPoints = [
+            { x: entity.x, y: entity.y },           // Centro
+            { x: entity.x + radius, y: entity.y },  // Derecha
+            { x: entity.x - radius, y: entity.y },  // Izquierda
+            { x: entity.x, y: entity.y + radius },  // Abajo
+            { x: entity.x, y: entity.y - radius }   // Arriba
+        ];
+
+        for (const p of checkPoints) {
+            const gridPos = this.map.worldToGrid(p.x, p.y);
+            if (!this.map.isValid(gridPos.x, gridPos.y)) {
+                return true; // Colisión si CUALQUIER punto está en un muro
+            }
+        }
+
+        return false; // Sin colisión
+    }
+
+
+    /**
+     * Comprueba colisión entre dos entidades circulares
+     */
     checkEntityCollision(entityA, entityB) {
+        // ... (Esta función no se usa para zombies, pero la dejamos para balas)
         const dx = entityB.x - entityA.x;
         const dy = entityB.y - entityA.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         const minDistance = entityA.radius + entityB.radius;
+        
         return distance < minDistance;
     }
+
 
     spawnZombies(count) {
         for (let i = 0; i < count; i++) {
@@ -303,17 +296,22 @@ class GameLogic {
         }
     }
 
+
     createBullet(playerId, x, y, dx, dy) {
+        // ... (Sin cambios en esta función)
         const player = this.entities.players.get(playerId);
         if (!player || player.health <= 0) return;
+
         const currentTime = Date.now();
         if (currentTime - player.lastShotTime < player.shootCooldown) {
             return;
         }
         player.lastShotTime = currentTime;
+
         const bulletId = `bullet_${playerId}_${currentTime}`; 
         const startX = x + dx * (player.radius + 4); 
         const startY = y + dy * (player.radius + 4);
+
         const newBullet = new ServerBullet(
             bulletId, startX, startY, dx, dy, 
             this.config.bulletSpeed, 
@@ -322,63 +320,96 @@ class GameLogic {
         this.entities.bullets.set(bulletId, newBullet);
     }
 
+
     update() {
         const currentTime = Date.now();
         const deltaTime = currentTime - this.lastUpdateTime; 
         this.lastUpdateTime = currentTime;
 
-        // 1. Actualizar Jugadores
+        // 1. Actualizar el mapa de costes (Flow Field)
+        this.pathfindUpdateTimer += deltaTime;
+        if (this.pathfindUpdateTimer > this.pathfindUpdateInterval) {
+            this.pathfindUpdateTimer = 0;
+            this.updatePlayerCostMap();
+        }
+
+
+        // 2. Actualizar Jugadores (CON COLISIÓN DESLIZANTE)
         this.entities.players.forEach(player => {
             if (player.health <= 0) {
                 player.isDead = true;
                 return;
             }
+
             const oldX = player.x;
             const oldY = player.y;
-            player.x += player.input.moveX * player.speed;
+            
+            const moveX = player.input.moveX * player.speed;
+            const moveY = player.input.moveY * player.speed;
+
+            // Mover en X
+            player.x += moveX;
             if (this.checkMapCollision(player)) {
-                player.x = oldX; 
+                player.x = oldX; // Colisión, resetear X
             }
-            player.y += player.input.moveY * player.speed;
+
+            // Mover en Y
+            player.y += moveY;
             if (this.checkMapCollision(player)) {
-                player.y = oldY; 
+                player.y = oldY; // Colisión, resetear Y
             }
+
+
             if (player.input.isShooting) {
                 this.createBullet(player.id, player.x, player.y, player.input.shootX, player.input.shootY);
             }
         });
 
-        // 2. Actualizar Zombies
-        const zombieArray = Array.from(this.entities.zombies.values());
-        zombieArray.forEach(zombie => {
+
+        // 3. Actualizar Zombies (CON COLISIÓN DESLIZANTE)
+        this.entities.zombies.forEach(zombie => {
             const oldX = zombie.x;
             const oldY = zombie.y;
-            zombie.updateAI(this.entities.players, this.pathfinder, this.map, deltaTime);
-            if (this.checkMapCollision(zombie)) {
-                zombie.x = oldX;
-                zombie.y = oldY;
-                zombie.path = [];
-                zombie.stuckTimer = 1001; // Forzar recalculo
+
+            // La IA ahora solo devuelve un vector, no mueve al zombie
+            const moveVector = zombie.updateAI(this.entities.players, this.playerCostMap, this.map, deltaTime);
+            
+            if (moveVector) {
+                // Mover en X
+                zombie.x += moveVector.dx;
+                if (this.checkMapCollision(zombie)) {
+                    zombie.x = oldX; // Colisión, resetear X
+                }
+
+                // Mover en Y
+                zombie.y += moveVector.dy;
+                if (this.checkMapCollision(zombie)) {
+                    zombie.y = oldY; // Colisión, resetear Y
+                }
             }
         });
 
-        // 3. Actualizar Balas
+        // 4. Actualizar Balas
         const bulletsToRemove = [];
         const zombiesToRemove = [];
+
+
         this.entities.bullets.forEach(bullet => {
             bullet.updatePosition();
+
+            // Usamos la colisión de 5 puntos también para la bala
             if (this.checkMapCollision(bullet)) {
                 bulletsToRemove.push(bullet.id);
                 return;
             }
+
+
             this.entities.zombies.forEach(zombie => {
-                const dx = zombie.x - bullet.x;
-                const dy = zombie.y - bullet.y;
-                const distSq = dx * dx + dy * dy;
-                const collisionDistSq = (zombie.radius + bullet.radius) ** 2;
-                if (distSq < collisionDistSq) {
+                // checkEntityCollision (círculo-círculo) es perfecto para esto
+                if (this.checkEntityCollision(bullet, zombie)) {
                     zombie.health -= bullet.damage;
                     bulletsToRemove.push(bullet.id);
+
                     if (zombie.health <= 0) {
                         zombiesToRemove.push(zombie.id);
                         const player = this.entities.players.get(bullet.ownerId);
@@ -390,11 +421,14 @@ class GameLogic {
                 }
             });
         });
+
+
         bulletsToRemove.forEach(id => this.entities.bullets.delete(id));
         zombiesToRemove.forEach(id => this.entities.zombies.delete(id));
 
-        // 4. Lógica de Oleadas
-        if (this.entities.zombies.size === 0 && this.running) {
+
+        // 5. Lógica de Oleadas
+        if (this.entities.zombies.size === 0) {
             this.wave++;
             this.score += 100 * this.wave;
             const zombieCount = Math.floor(this.wave * this.config.waveMultiplier + this.config.initialZombies);
@@ -403,22 +437,36 @@ class GameLogic {
         }
     }
 
+
     getGameStateSnapshot() {
         return {
             players: Array.from(this.entities.players.values()).map(p => ({
-                id: p.id, x: p.x, y: p.y, name: p.name, health: p.health,
-                kills: p.kills, shootX: p.input.shootX, shootY: p.input.shootY
+                id: p.id,
+                x: p.x,
+                y: p.y,
+                name: p.name,
+                health: p.health,
+                kills: p.kills,
+                shootX: p.input.shootX, 
+                shootY: p.input.shootY
             })),
             zombies: Array.from(this.entities.zombies.values()).map(z => ({
-                id: z.id, x: z.x, y: z.y, health: z.health, maxHealth: z.maxHealth
+                id: z.id,
+                x: z.x,
+                y: z.y,
+                health: z.health,
+                maxHealth: z.maxHealth
             })),
             bullets: Array.from(this.entities.bullets.values()).map(b => ({
-                id: b.id, x: b.x, y: b.y
+                id: b.id,
+                x: b.x,
+                y: b.y
             })),
             score: this.score,
             wave: this.wave
         };
     }
+
 
     handlePlayerInput(id, input) {
         const player = this.entities.players.get(id);
@@ -427,24 +475,22 @@ class GameLogic {
         }
     }
 
+
     removePlayer(id) {
         this.entities.players.delete(id);
     }
 
-Initial
+
     isGameOver() {
-        if (!this.running) return false;
         const activePlayers = Array.from(this.entities.players.values()).filter(p => p.health > 0);
-        const isOver = activePlayers.length === 0 && this.entities.players.size > 0;
-        if (isOver) {
-            this.running = false;
-        }
-        return isOver;
+        return activePlayers.length === 0 && this.entities.players.size > 0;
     }
+
 
     getFinalScore() {
         return { finalScore: this.score, finalWave: this.wave };
     }
 }
+
 
 module.exports = GameLogic;
