@@ -12,7 +12,7 @@ class Pathfinder {
         this.cellSize = cellSize;
         this.rows = navigationGrid.length;
         this.cols = navigationGrid[0].length;
-        
+
         // Direcciones (4-way) para BFS y movimiento
         this.directions = [
             { x: 0, y: -1 },  // Arriba
@@ -40,7 +40,7 @@ class Pathfinder {
     generatePlayerCostMap(playerGridPos) {
         // 1. Inicializar el mapa de costes con Infinito
         const costMap = Array(this.rows).fill(0).map(() => Array(this.cols).fill(Infinity));
-        
+
         // 2. Inicializar la cola (queue) para el BFS
         const queue = [];
 
@@ -72,7 +72,7 @@ class Pathfinder {
                 }
             }
         }
-        
+
         return costMap;
     }
 }
