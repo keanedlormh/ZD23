@@ -234,9 +234,6 @@
             margin: 10px 0;
             width: 100%;
             box-sizing: border-box;
-            /* --- CORRECCIÓN --- 
-               #1515f -> #15151f 
-            */
             background: linear-gradient(135deg, #0a0a15 0%, #15151f 100%);
             border: 2px solid #333;
             border-left: 3px solid var(--color-acento-principal);
@@ -300,6 +297,11 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            
+            /* --- CORRECCIÓN FORZADA --- */
+            /* Añadidas para corregir el error de renderizado en "Iniciar Partida" */
+            line-height: normal; /* Resetea la altura de línea */
+            text-align: center;  /* Asegura el centrado del texto */
         }
 
 
