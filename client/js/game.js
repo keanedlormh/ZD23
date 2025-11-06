@@ -3,11 +3,14 @@
  *
  * Esta versión incluye:
  * 1. (v1.1) Corrección de 'calculateAimVector' (paralaje).
- * 2. (v1.2) HUD adaptable (`drawHUD`).
- * 3. (v1.2) Minimapa actualizado (color y posición).
- * 4. (v1.2) Lógica del slider de oleadas (10-100% -> 1.1-2.0).
- * 5. (v1.2) Lógica de Game Over: el bucle de renderizado se detiene
- * y se añaden nuevos listeners para 'Continuar' y 'Salir'.
+ * 2. (v1.2) Lógica del slider de oleadas (10-100% -> 1.1-2.0).
+ * 3. (v1.2) Lógica de Game Over (Continuar/Salir).
+ * 4. (v1.2) ¡REDISEÑO DE HUD!
+ * - `drawHUD` y `drawMinimap` han sido modificados.
+ * - El minimapa ahora está FIJO en la esquina superior derecha (sin margen).
+ * - La barra de HUD (Vida, Puntos, etc.) ahora ocupa
+ * el espacio restante a la izquierda del minimap.
+ * - La barra de HUD sigue siendo adaptable (responsive) en ese espacio.
  */
 
 
@@ -692,62 +695,74 @@ function drawJoysticks() {
 }
 
 
+// --- v1.2: CONSTANTE DE MINIMAPA MOVIDA ---
+// Definido aquí para que drawHUD y drawMinimap lo usen
+const MINIMAP_SIZE = 150; // Tamaño del minimapa en píxeles
+
+
 /**
  * Dibuja el HUD (Puntuación, Vida) y el Minimapa.
- * --- v1.2: REDISEÑADO PARA SER ADAPTABLE ---
+ * --- v1.2: REDISEÑADO PARA NUEVO LAYOUT ---
  */
 function drawHUD(player) {
     const { serverSnapshot } = clientState;
     
-    // --- NUEVA LÓGICA ADAPTABLE ---
+    // --- NUEVA LÓGICA DE LAYOUT ---
+    
+    // 1. Definir tamaños
     const isMobileLayout = canvas.width < 700;
-    const barHeight = isMobileLayout ? 60 : 40;
+    const barHeight = isMobileLayout ? 60 : 40; // Barra más alta en móvil
+    const hudWidth = canvas.width - MINIMAP_SIZE; // Ancho dinámico para la barra
+    
     const baseFontSize = isMobileLayout ? 16 : 18;
     const padding = 10;
     const line1Y = isMobileLayout ? 22 : 25;
     const line2Y = 45; // Solo para móvil
 
 
-    // 1. Dibujar el fondo de la barra
+    // 2. Dibujar el fondo de la barra de HUD (izquierda)
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(0, 0, canvas.width, barHeight);
+    ctx.fillRect(0, 0, hudWidth, barHeight);
 
 
     ctx.fillStyle = 'white';
     ctx.font = `bold ${baseFontSize}px Arial`;
 
 
-    // 2. Bloque 1: Info del Jugador (Vida/Kills)
+    // 3. Bloque 1: Info del Jugador (Vida/Kills)
     ctx.textAlign = 'left';
     const health = player && player.health > 0 ? player.health : 0;
     const kills = player ? player.kills : 0;
     ctx.fillText(`Vida: ${health} | Kills: ${kills}`, padding, line1Y);
 
 
-    // 3. Bloque 2: Info de Partida (Puntuación/Oleada)
+    // 4. Bloque 2: Info de Partida (Puntuación/Oleada)
     const scoreText = `Puntuación: ${serverSnapshot.score} | Oleada: ${serverSnapshot.wave}`;
     
     if (isMobileLayout) {
+        // En móvil: Poner en la segunda línea
         ctx.textAlign = 'left';
         ctx.fillText(scoreText, padding, line2Y);
     } else {
+        // En escritorio: Poner en el centro de la barra
         ctx.textAlign = 'center';
-        ctx.fillText(scoreText, canvas.width / 2, line1Y);
+        ctx.fillText(scoreText, hudWidth / 2, line1Y);
     }
 
 
-    // 4. Bloque 3: Nombre del Jugador
+    // 5. Bloque 3: Nombre del Jugador
     ctx.textAlign = 'right';
     const myInfo = clientState.playersInLobby?.find(p => p.id === clientState.me.id);
     const myName = myInfo ? myInfo.name : 'Desconocido';
 
 
     ctx.fillStyle = player?.health > 0 ? 'cyan' : '#F44336';
-    ctx.fillText(`${myName}`, canvas.width - padding, line1Y);
+    // Alineado a la derecha del *ancho del HUD*, no del canvas
+    ctx.fillText(`${myName}`, hudWidth - padding, line1Y);
 
 
-    // 5. Dibujar el minimapa (pasando la nueva altura de la barra)
-    drawMinimap(ctx, player, barHeight);
+    // 6. Dibujar el minimapa (ahora sin argumentos)
+    drawMinimap(ctx, player);
 }
 
 
@@ -789,38 +804,29 @@ function createMinimapBackground() {
 /**
  * Dibuja el minimapa en la esquina superior derecha.
  * --- v1.2: MODIFICADO ---
- * - Acepta 'hudBarHeight' para posicionarse dinámicamente.
- * - Cambiado el color de 'otros jugadores' a azul.
+ * - Se pega a la esquina superior derecha (sin márgenes).
+ * - No recibe 'hudBarHeight'.
  */
-function drawMinimap(ctx, me, hudBarHeight = 40) {
+function drawMinimap(ctx, me) {
     if (!clientState.mapRenderer || !clientState.minimapCanvas || !me) {
         return;
     }
 
 
-    const MINIMAP_SIZE = 150;
-    const MINIMAP_MARGIN = 20;
-
-
-    // --- MODIFICADO ---
-    const minimapX = canvas.width - MINIMAP_SIZE - MINIMAP_MARGIN;
-    const minimapY = hudBarHeight + MINIMAP_MARGIN; 
+    // --- MODIFICADO: Posición fija en esquina ---
+    const minimapX = canvas.width - MINIMAP_SIZE;
+    const minimapY = 0; 
 
 
     const mapWorldSize = clientState.mapRenderer.mapWorldSize;
     const ratio = MINIMAP_SIZE / mapWorldSize;
 
 
-    // 1. Guardar contexto y crear un área de recorte
+    // 1. Guardar contexto y crear un área de recorte (clipping)
     ctx.save();
     ctx.beginPath();
-    if (minimapY < canvas.height - MINIMAP_SIZE) {
-        ctx.rect(minimapX, minimapY, MINIMAP_SIZE, MINIMAP_SIZE);
-        ctx.clip();
-    } else {
-        ctx.restore();
-        return;
-    }
+    ctx.rect(minimapX, minimapY, MINIMAP_SIZE, MINIMAP_SIZE);
+    ctx.clip(); // No dibujar nada fuera de este rectángulo
 
 
     // 2. Dibujar el fondo del minimapa
@@ -837,7 +843,6 @@ function drawMinimap(ctx, me, hudBarHeight = 40) {
 
 
     // 4. Dibujar otros jugadores
-    // --- MODIFICADO ---
     ctx.fillStyle = '#477be3'; // Azul oscuro (color de 'otros' en entities.js)
     clientState.interpolatedEntities.players.forEach(player => {
         if (player.id === me.id) return;
@@ -1038,8 +1043,6 @@ socket.on('lobbyUpdate', (game) => {
     clientState.me.isHost = game.players.find(p => p.id === clientState.me.id)?.isHost || false;
 
 
-    // Si recibimos un 'lobbyUpdate', significa que el servidor nos
-    // ha movido al lobby (por ej, después de 'gameOver')
     if (clientState.currentState === 'gameOver') {
         clientState.currentState = 'lobby';
     }
@@ -1096,11 +1099,11 @@ socket.on('gameOver', (data) => {
 socket.on('gameEnded', () => {
     console.warn('La partida terminó.');
     
-    // Detener el bucle de renderizado
     if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
         animationFrameId = null;
     }
+
 
     clientState.currentState = 'menu';
     clientState.roomId = null;
@@ -1210,11 +1213,10 @@ document.getElementById('backToMenuButton').addEventListener('click', () => {
         socket.emit('leaveRoom', clientState.roomId);
     }
     
-    // v1.2: Reseteo completo al salir
     clientState.currentState = 'menu';
     clientState.roomId = null;
     clientState.me.isHost = false;
-    if (animationFrameId) { // Asegurarse de parar el bucle si existiera
+    if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
         animationFrameId = null;
     }
@@ -1225,11 +1227,7 @@ document.getElementById('backToMenuButton').addEventListener('click', () => {
 // --- v1.2: LISTENERS POST-PARTIDA ---
 document.getElementById('continueGameButton').addEventListener('click', () => {
     if (clientState.currentState === 'gameOver' && clientState.roomId) {
-        // Pedir al servidor que nos devuelva al lobby
         socket.emit('returnToLobby', clientState.roomId);
-        
-        // El cliente se mueve al lobby. El servidor enviará un 'lobbyUpdate'
-        // que confirmará el estado para todos.
         clientState.currentState = 'lobby';
         updateUI();
     }
@@ -1238,17 +1236,13 @@ document.getElementById('continueGameButton').addEventListener('click', () => {
 
 document.getElementById('exitToMenuButton').addEventListener('click', () => {
     if (clientState.roomId) {
-        // Informar al servidor que dejamos la sala
         socket.emit('leaveRoom', clientState.roomId);
     }
     
-    // Resetear el estado del cliente al menú principal
     clientState.currentState = 'menu';
     clientState.roomId = null;
     clientState.me.isHost = false;
     
-    // El bucle de animación ya debería estar detenido por 'gameOver',
-    // pero lo comprobamos por si acaso.
     if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
         animationFrameId = null;
@@ -1268,5 +1262,4 @@ document.getElementById('setting_waveMultiplier_slider').addEventListener('input
 // --- INICIO ---
 loadConfig();
 updateUI();
-// v1.2: No iniciar el bucle aquí, se inicia con 'gameStarted'
-// requestAnimationFrame(gameLoopRender); 
+// El bucle de renderizado se inicia en 'gameStarted'
