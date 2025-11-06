@@ -234,7 +234,7 @@
             margin: 10px 0;
             width: 100%;
             box-sizing: border-box;
-            background: linear-gradient(135deg, #0a0a15 0%, #15151f 100%);
+            background: linear-gradient(135deg, #0a0a15 0%, #1515f 100%);
             border: 2px solid #333;
             border-left: 3px solid var(--color-acento-principal);
             color: var(--color-texto);
@@ -293,7 +293,7 @@
             transition: all 0.3s;
 
 
-            /* Solución de centrado vertical (SIN line-height: 1) */
+            /* Solución de centrado vertical y horizontal */
             display: flex;
             align-items: center;
             justify-content: center;
@@ -488,7 +488,7 @@
             text-transform: uppercase;
             letter-spacing: 1px;
         }
-
+        
         /* --- v1.2: Estilo para el nuevo slider --- */
         input[type="range"] {
             -webkit-appearance: none;
@@ -525,7 +525,7 @@
             box-shadow: 0 0 10px var(--color-primario-sombra);
         }
         /* --- FIN v1.2 --- */
-
+        
         .setting-item input[type="number"],
         .setting-item select {
             width: 100px;
@@ -931,7 +931,7 @@
             </div>
             <!-- Se reemplazó el input[type=number] por un input[type=range] -->
             <input type="range" id="setting_waveMultiplier_slider" min="10" max="100" value="50" step="1" style="width: 100%; margin-top: 5px;">
-
+            
             <!-- Campo oculto para mantener compatibilidad -->
             <input type="hidden" id="setting_waveMultiplier" value="1.5">
             <!-- --- FIN MODIFICACIÓN v1.2 --- -->
