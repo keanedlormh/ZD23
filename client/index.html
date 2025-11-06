@@ -7,7 +7,8 @@
 
     <!-- FUENTES DE LA ESTÉTICA "APOCALIPSIS" -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://https://fonts.gstatic.com" crossorigin>
+    <!-- CORREGIDO: "https://https://" -> "https://" -->
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
 
     <!-- ESTILOS DE LA ESTÉTICA "APOCALIPSIS" -->
@@ -192,6 +193,7 @@
             background: linear-gradient(135deg, #0f0f1a 0%, #1a1a25 100%);
         }
 
+        /* CORREGIDO: Fondo de autocompletar */
         input:-webkit-autofill,
         input:-webkit-autofill:hover, 
         input:-webkit-autofill:focus, 
@@ -221,6 +223,7 @@
             overflow: hidden;
             clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
             transition: all 0.3s;
+            /* CORREGIDO: Propiedades de .btn base */
             display: flex;
             align-items: center;
             justify-content: center;
@@ -287,12 +290,8 @@
             box-shadow: 0 0 30px var(--color-peligro-sombra), 0 8px 0 var(--color-peligro-sombra-oscura), inset 0 1px 0 rgba(255, 255, 255, 0.4);
         }
 
-        /* --- FIX: CENTRADO ABSOLUTO PARA "INICIAR PARTIDA" --- */
-        #startButton {
-            position: relative;
-            overflow: hidden;
-        }
-        #startButton span {
+        /* --- FIX: CENTRADO ABSOLUTO PARA SPAN INTERNO (Tu corrección) --- */
+        .btn span {
             position: absolute;
             top: 50%;
             left: 50%;
@@ -300,8 +299,16 @@
             width: 100%;
             text-align: center;
             line-height: 1;
-            pointer-events: none;
+            pointer-events: none; /* Para que el clic atraviese el span */
         }
+        
+        /* Caso especial para el botón de Configuración (icono + texto) */
+        #settingsButton span {
+            position: static; /* Anula el centrado absoluto */
+            transform: none;
+            width: auto;
+        }
+
 
         /* --- PANTALLA DE JUEGO --- */
         #gameCanvas {
@@ -547,13 +554,14 @@
         <h2>Zombie Shooter</h2>
         <input type="text" id="playerNameInput" placeholder="INTRODUCE TU NOMBRE" maxlength="15" value="Player1">
         <hr>
+        <!-- HTML CORREGIDO: Botones con <span> -->
         <button id="createGameButton" class="btn btn-primary btn-block"><span>Crear Partida</span></button>
         <button id="browseGamesButton" class="btn btn-primary btn-block"><span>Buscar Partidas</span></button>
         <hr>
         <input type="text" id="roomIdInput" placeholder="UNIRSE POR ID (EJ: ABCD)" maxlength="4" style="text-transform: uppercase;">
         <button id="joinGameButton" class="btn btn-primary btn-block"><span>Unirse por ID</span></button>
         <hr>
-        <button id="settingsButton" class="btn btn-secondary btn-block"><span>Configuración</span></button>
+        <button id="settingsButton" class="btn btn-secondary btn-block"><span>⚙️ Configuración</span></button>
     </div>
 
     <div id="settingsScreen" class="menu-container" style="display: none;">
@@ -596,6 +604,7 @@
         <div class="settings-group">
             <h3>Oleadas</h3>
             <div class="setting-item"><label>Zombies Iniciales:</label><input type="number" id="setting_initialZombies" min="3" max="20" value="5"></div>
+            <!-- v1.2: Slider de oleadas -->
             <div class="setting-item"><label>Aum. Zombies / Oleada:</label><span id="waveMultiplierValue" style="color: var(--color-acento-principal); font-weight: bold; min-width: 50px; text-align: right;">+50%</span></div>
             <input type="range" id="setting_waveMultiplier_slider" min="10" max="100" value="50" step="1" style="width: 100%; margin-top: 5px;">
             <input type="hidden" id="setting_waveMultiplier" value="1.5">
@@ -634,7 +643,10 @@
         <h2>GAME OVER</h2>
         <p>Puntuación Final: <span id="finalScore" style="font-weight: bold;">0</span></p>
         <p>Oleada Alcanzada: <span id="finalWave" style="font-weight: bold;">0</span></p>
-        <button onclick="window.location.reload()" class="btn btn-secondary btn-block"><span>Jugar de Nuevo</span></button>
+        
+        <!-- v1.2: Botones de post-partida -->
+        <button id="continueGameButton" class="btn btn-secondary btn-block"><span>Continuar en Sala</span></button>
+        <button id="exitToMenuButton" class="btn btn-danger btn-block"><span>Salir al Menú</span></button>
     </div>
 
     <script src="/socket.io/socket.io.js"></script> 
