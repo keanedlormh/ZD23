@@ -1,17 +1,13 @@
 /**
  * client/js/game.js - ACTUALIZADO v1.2
- * - Corregido 'calculateAimVector'.
- * - La función ahora usa la posición REAL del jugador en la pantalla
- * (me.x - clientState.cameraX) en lugar de asumir que siempre
- * está en el centro (canvas.width / 2).
- * - Esto elimina el error de "paralaje" al disparar cerca
- * de los bordes del mapa.
- * - MODIFICADO: drawHUD() rediseñado para ser adaptable (responsive).
- * - MODIFICADO: drawMinimap() para aceptar altura de HUD y cambiar color de jugadores.
- * - MODIFICADO: Lógica de Configuración (apply, read, presets) para
- * manejar el nuevo slider de porcentaje (10-100) y convertirlo
- * al valor real del multiplicador (1.1-2.0).
- * - AÑADIDO: Event listener para que el slider actualice el texto (span).
+ *
+ * Esta versión incluye:
+ * 1. (v1.1) Corrección de 'calculateAimVector' (paralaje).
+ * 2. (v1.2) HUD adaptable (`drawHUD`).
+ * 3. (v1.2) Minimapa actualizado (color y posición).
+ * 4. (v1.2) Lógica del slider de oleadas (10-100% -> 1.1-2.0).
+ * 5. (v1.2) Lógica de Game Over: el bucle de renderizado se detiene
+ * y se añaden nuevos listeners para 'Continuar' y 'Salir'.
  */
 
 
@@ -28,7 +24,7 @@ const SERVER_TICK_RATE = 30;
 // --- v1.2: MODIFICADO ---
 // El waveMultiplier ahora es 1.5 (un 50% de aumento) por defecto
 const DEFAULT_CONFIG = {
-    controlType: 'auto', // NUEVO: 'auto', 'touch', 'keyboard'
+    controlType: 'auto',
     playerHealth: 100,
     playerSpeed: 6,
     shootCooldown: 150,
@@ -118,7 +114,7 @@ function readConfigFromUI() {
     gameConfig.roomCount = parseInt(document.getElementById('setting_roomCount').value);
     gameConfig.corridorWidth = parseInt(document.getElementById('setting_corridorWidth').value);
     gameConfig.initialZombies = parseInt(document.getElementById('setting_initialZombies').value);
-
+    
     // Convertir el valor del slider (10 - 100) al valor real (1.1 - 2.0)
     const sliderValue = parseInt(document.getElementById('setting_waveMultiplier_slider').value);
     gameConfig.waveMultiplier = 1 + (sliderValue / 100);
@@ -195,7 +191,7 @@ const KNOB_RADIUS = 30;
 
 const touchState = {
     isTouchDevice: 'ontouchstart' in window || navigator.maxTouchPoints > 0,
-    currentControlMethod: 'auto', // Se setea a 'touch' o 'keyboard' en updateControlMethod
+    currentControlMethod: 'auto',
     move: { active: false, id: null, centerX: 0, centerY: 0, currentX: 0, currentY: 0 },
     aim: { active: false, id: null, centerX: 0, centerY: 0, currentX: 0, currentY: 0 }
 };
@@ -231,8 +227,7 @@ const clientState = {
         zombies: new Map()
     },
     mapRenderer: null,
-    minimapCanvas: null, // Canvas de fondo para el minimapa
-    // Posición de la cámara (cacheada para usar en aim)
+    minimapCanvas: null,
     cameraX: 0, 
     cameraY: 0,
     input: {
@@ -316,48 +311,37 @@ function updateMoveInput() {
 
 
 /**
- * --- ¡FUNCIÓN CORREGIDA! (v1.1)
- * ---
- * Esta es la función clave que se ha modificado.
+ * --- ¡FUNCIÓN CORREGIDA! (v1.1) ---
  */
 function calculateAimVector(e) {
     if (clientState.currentState !== 'playing' || touchState.currentControlMethod !== 'keyboard') return;
-    // CHECK
 
 
-    // 1. Obtener 'me' (jugador local)
     const me = clientState.interpolatedEntities.players.get(clientState.me.id);
-    // Si 'me' o la cámara (cameraX) no están listos, no hacer nada.
     if (!me || clientState.cameraX === undefined || clientState.cameraY === undefined) {
         return;
     }
 
 
-    // 2. Calcular la posición del ratón en la pantalla (como antes)
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left; 
     const mouseY = e.clientY - rect.top;
 
 
-    // 3. (LA CORRECCIÓN) Calcular la posición REAL del jugador en la pantalla
-    //    player_world_pos - camera_world_pos = player_screen_pos
     const playerScreenX = me.x - clientState.cameraX;
     const playerScreenY = me.y - clientState.cameraY;
 
 
-    // 4. Calcular el vector desde el jugador (en pantalla) al ratón (en pantalla)
     let shootX = mouseX - playerScreenX;
     let shootY = mouseY - playerScreenY;
 
 
-    // 5. Normalizar el vector (como antes)
     const length = Math.sqrt(shootX ** 2 + shootY ** 2);
     if (length > 0.1) { 
         clientState.input.shootX = shootX / length;
         clientState.input.shootY = shootY / length;
 
 
-        // Actualizar el 'me' local para el retículo (como antes)
         if (me) {
             me.shootX = clientState.input.shootX;
             me.shootY = clientState.input.shootY;
@@ -370,7 +354,7 @@ canvas.addEventListener('mousemove', calculateAimVector);
 
 
 canvas.addEventListener('mousedown', (e) => {
-    if (clientState.currentState !== 'playing' || touchState.currentControlMethod !== 'keyboard') return; // CHECK
+    if (clientState.currentState !== 'playing' || touchState.currentControlMethod !== 'keyboard') return;
     if (e.button === 0) {
         clientState.input.isShooting = true;
     }
@@ -378,7 +362,7 @@ canvas.addEventListener('mousedown', (e) => {
 
 
 canvas.addEventListener('mouseup', (e) => {
-    if (clientState.currentState !== 'playing' || touchState.currentControlMethod !== 'keyboard') return; // CHECK
+    if (clientState.currentState !== 'playing' || touchState.currentControlMethod !== 'keyboard') return;
     if (e.button === 0) {
         clientState.input.isShooting = false;
     }
@@ -387,7 +371,7 @@ canvas.addEventListener('mouseup', (e) => {
 
 // --- LÓGICA TÁCTIL (JOYSTICKS) ---
 canvas.addEventListener('touchstart', (e) => {
-    if (clientState.currentState !== 'playing' || touchState.currentControlMethod !== 'touch') return; // CHECK
+    if (clientState.currentState !== 'playing' || touchState.currentControlMethod !== 'touch') return;
     e.preventDefault();
 
 
@@ -416,11 +400,11 @@ canvas.addEventListener('touchstart', (e) => {
             clientState.input.isShooting = true;
         }
     });
-}, { passive: false }); // Necesario para preventDefault
+}, { passive: false });
 
 
 canvas.addEventListener('touchmove', (e) => {
-    if (clientState.currentState !== 'playing' || touchState.currentControlMethod !== 'touch') return; // CHECK
+    if (clientState.currentState !== 'playing' || touchState.currentControlMethod !== 'touch') return;
     e.preventDefault();
 
 
@@ -477,11 +461,11 @@ canvas.addEventListener('touchmove', (e) => {
             }
         }
     });
-}, { passive: false }); // Necesario para preventDefault
+}, { passive: false });
 
 
 canvas.addEventListener('touchend', (e) => {
-    if (clientState.currentState !== 'playing' || touchState.currentControlMethod !== 'touch') return; // CHECK
+    if (clientState.currentState !== 'playing' || touchState.currentControlMethod !== 'touch') return;
     e.preventDefault();
 
 
@@ -498,7 +482,7 @@ canvas.addEventListener('touchend', (e) => {
             clientState.input.isShooting = false;
         }
     });
-}, { passive: false }); // Necesario para preventDefault
+}, { passive: false });
 
 
 // --- RENDERIZADO ---
@@ -516,7 +500,10 @@ function gameLoopRender(timestamp) {
 
 
     lastRenderTime = timestamp;
-    animationFrameId = requestAnimationFrame(gameLoopRender);
+    // v1.2: Solo pide el siguiente frame si el ID está activo
+    if (animationFrameId) {
+        animationFrameId = requestAnimationFrame(gameLoopRender);
+    }
 }
 
 
@@ -622,7 +609,6 @@ function drawGame(deltaTime) {
         if (viewportH > mapSize) cameraY = -(viewportH - mapSize) / 2;
 
 
-        // Cachear la posición de la cámara para que la use 'calculateAimVector'
         clientState.cameraX = cameraX;
         clientState.cameraY = cameraY;
     } else {
@@ -712,20 +698,13 @@ function drawJoysticks() {
  */
 function drawHUD(player) {
     const { serverSnapshot } = clientState;
-
+    
     // --- NUEVA LÓGICA ADAPTABLE ---
-    // Detecta si la pantalla es "estrecha" (móvil)
     const isMobileLayout = canvas.width < 700;
-
-    // Altura de la barra: más alta en móvil para dos líneas, más baja en escritorio
     const barHeight = isMobileLayout ? 60 : 40;
-
-    // Tamaño de fuente base
     const baseFontSize = isMobileLayout ? 16 : 18;
-
-    // Posiciones de texto
     const padding = 10;
-    const line1Y = isMobileLayout ? 22 : 25; // Línea superior (o única línea en escritorio)
+    const line1Y = isMobileLayout ? 22 : 25;
     const line2Y = 45; // Solo para móvil
 
 
@@ -747,13 +726,11 @@ function drawHUD(player) {
 
     // 3. Bloque 2: Info de Partida (Puntuación/Oleada)
     const scoreText = `Puntuación: ${serverSnapshot.score} | Oleada: ${serverSnapshot.wave}`;
-
+    
     if (isMobileLayout) {
-        // En móvil: Poner en la segunda línea, alineado a la izquierda
         ctx.textAlign = 'left';
         ctx.fillText(scoreText, padding, line2Y);
     } else {
-        // En escritorio: Poner en el centro de la primera línea
         ctx.textAlign = 'center';
         ctx.fillText(scoreText, canvas.width / 2, line1Y);
     }
@@ -785,23 +762,20 @@ function createMinimapBackground() {
     const gridSize = mapData.length;
 
 
-    // Crear un canvas del tamaño exacto de la cuadrícula
     const mapCanvas = document.createElement('canvas');
     mapCanvas.width = gridSize;
     mapCanvas.height = gridSize;
     const mapCtx = mapCanvas.getContext('2d');
 
 
-    // Dibujar el fondo (muros)
-    mapCtx.fillStyle = '#222'; // Color del muro
+    mapCtx.fillStyle = '#222';
     mapCtx.fillRect(0, 0, gridSize, gridSize);
 
 
-    // Dibujar el suelo
-    mapCtx.fillStyle = '#555'; // Color del suelo (más claro que el muro)
+    mapCtx.fillStyle = '#555';
     for (let y = 0; y < gridSize; y++) {
         for (let x = 0; x < gridSize; x++) {
-            if (mapData[y][x] === 0) { // 0 = Suelo
+            if (mapData[y][x] === 0) {
                 mapCtx.fillRect(x, y, 1, 1);
             }
         }
@@ -820,48 +794,45 @@ function createMinimapBackground() {
  */
 function drawMinimap(ctx, me, hudBarHeight = 40) {
     if (!clientState.mapRenderer || !clientState.minimapCanvas || !me) {
-        return; // Aún no estamos listos para dibujar
+        return;
     }
 
 
-    const MINIMAP_SIZE = 150; // Tamaño del minimapa en píxeles
-    const MINIMAP_MARGIN = 20; // Margen desde los bordes
+    const MINIMAP_SIZE = 150;
+    const MINIMAP_MARGIN = 20;
 
 
     // --- MODIFICADO ---
-    // Posición Y basada en la altura de la barra de HUD
     const minimapX = canvas.width - MINIMAP_SIZE - MINIMAP_MARGIN;
     const minimapY = hudBarHeight + MINIMAP_MARGIN; 
 
 
     const mapWorldSize = clientState.mapRenderer.mapWorldSize;
-    // Ratio para convertir coordenadas del mundo a coordenadas del minimapa
     const ratio = MINIMAP_SIZE / mapWorldSize;
 
 
-    // 1. Guardar contexto y crear un área de recorte (clipping)
+    // 1. Guardar contexto y crear un área de recorte
     ctx.save();
     ctx.beginPath();
-    // Asegurarse de que el minimapa no se dibuje sobre el HUD si la pantalla es muy pequeña
     if (minimapY < canvas.height - MINIMAP_SIZE) {
         ctx.rect(minimapX, minimapY, MINIMAP_SIZE, MINIMAP_SIZE);
-        ctx.clip(); // No dibujar nada fuera de este rectángulo
+        ctx.clip();
     } else {
-        ctx.restore(); // No dibujar si no hay espacio
+        ctx.restore();
         return;
     }
 
 
-    // 2. Dibujar el fondo del minimapa (el canvas pre-renderizado)
+    // 2. Dibujar el fondo del minimapa
     ctx.drawImage(clientState.minimapCanvas, minimapX, minimapY, MINIMAP_SIZE, MINIMAP_SIZE);
 
 
     // 3. Dibujar Zombies
-    ctx.fillStyle = '#F44336'; // Rojo
+    ctx.fillStyle = '#F44336';
     clientState.interpolatedEntities.zombies.forEach(zombie => {
         const dotX = minimapX + (zombie.x * ratio);
         const dotY = minimapY + (zombie.y * ratio);
-        ctx.fillRect(dotX - 1, dotY - 1, 2, 2); // Punto de 2x2
+        ctx.fillRect(dotX - 1, dotY - 1, 2, 2);
     });
 
 
@@ -869,25 +840,25 @@ function drawMinimap(ctx, me, hudBarHeight = 40) {
     // --- MODIFICADO ---
     ctx.fillStyle = '#477be3'; // Azul oscuro (color de 'otros' en entities.js)
     clientState.interpolatedEntities.players.forEach(player => {
-        if (player.id === me.id) return; // Saltar, 'me' se dibuja al final
+        if (player.id === me.id) return;
         const dotX = minimapX + (player.x * ratio);
         const dotY = minimapY + (player.y * ratio);
-        ctx.fillRect(dotX - 1, dotY - 1, 3, 3); // Punto de 3x3
+        ctx.fillRect(dotX - 1, dotY - 1, 3, 3);
     });
 
 
-    // 5. Dibujar al jugador local (encima de todo)
+    // 5. Dibujar al jugador local
     ctx.fillStyle = '#2596be'; // Azul cian (color de 'me' en entities.js)
     const meDotX = minimapX + (me.x * ratio);
     const meDotY = minimapY + (me.y * ratio);
-    ctx.fillRect(meDotX - 2, meDotY - 2, 4, 4); // Punto de 4x4 (más grande)
+    ctx.fillRect(meDotX - 2, meDotY - 2, 4, 4);
 
 
-    // 6. Restaurar el contexto (quitar el clipping)
+    // 6. Restaurar el contexto
     ctx.restore();
 
 
-    // 7. Dibujar el borde (después de restaurar)
+    // 7. Dibujar el borde
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
     ctx.lineWidth = 1;
     ctx.strokeRect(minimapX, minimapY, MINIMAP_SIZE, MINIMAP_SIZE);
@@ -911,14 +882,14 @@ function updateUI() {
     const settingsScreen = document.getElementById('settingsScreen');
     const lobbyScreen = document.getElementById('lobbyScreen');
     const gameOverScreen = document.getElementById('gameOverScreen');
-    const roomListScreen = document.getElementById('roomListScreen'); // NUEVO
+    const roomListScreen = document.getElementById('roomListScreen');
 
 
     menuScreen.style.display = 'none';
     settingsScreen.style.display = 'none';
     lobbyScreen.style.display = 'none';
     gameOverScreen.style.display = 'none';
-    roomListScreen.style.display = 'none'; // NUEVO
+    roomListScreen.style.display = 'none';
     canvas.style.display = 'none';
 
 
@@ -933,7 +904,7 @@ function updateUI() {
         canvas.style.display = 'block';
     } else if (clientState.currentState === 'gameOver') {
         gameOverScreen.style.display = 'flex';
-    } else if (clientState.currentState === 'roomList') { // NUEVO
+    } else if (clientState.currentState === 'roomList') {
         roomListScreen.style.display = 'flex';
     }
 }
@@ -973,14 +944,14 @@ function updateLobbyDisplay() {
 
 
 /**
- * NUEVA FUNCIÓN: Rellena la lista de salas activas
+ * (v1.1) Rellena la lista de salas activas
  */
 function populateRoomList(games) {
     const container = document.getElementById('roomListContainer');
     if (!container) return;
 
 
-    container.innerHTML = ''; // Limpiar lista anterior
+    container.innerHTML = '';
 
 
     if (games.length === 0) {
@@ -994,7 +965,6 @@ function populateRoomList(games) {
         roomItem.className = 'room-item';
 
 
-        // Info de la sala
         const roomInfo = document.createElement('div');
         roomInfo.className = 'room-info';
         roomInfo.innerHTML = `
@@ -1003,10 +973,9 @@ function populateRoomList(games) {
         `;
 
 
-        // Botón de unirse
         const joinButton = document.createElement('button');
         joinButton.textContent = 'Unirse';
-        joinButton.className = 'room-join-button';
+        joinButton.className = 'room-join-button'; // Nota: este botón no usa <span>
         joinButton.onclick = () => {
             const playerName = document.getElementById('playerNameInput').value || 'Anónimo';
             clientState.me.name = playerName;
@@ -1047,7 +1016,6 @@ socket.on('joinSuccess', (game) => {
 
 
 socket.on('joinFailed', (message) => {
-    // No usamos alert, mostramos error en el input de ID
     const input = document.getElementById('roomIdInput');
     if (input) {
         input.value = '';
@@ -1070,7 +1038,12 @@ socket.on('lobbyUpdate', (game) => {
     clientState.me.isHost = game.players.find(p => p.id === clientState.me.id)?.isHost || false;
 
 
-    // Si estamos en el lobby, actualizamos
+    // Si recibimos un 'lobbyUpdate', significa que el servidor nos
+    // ha movido al lobby (por ej, después de 'gameOver')
+    if (clientState.currentState === 'gameOver') {
+        clientState.currentState = 'lobby';
+    }
+
     if (clientState.currentState === 'lobby') {
         updateUI();
     }
@@ -1082,7 +1055,6 @@ socket.on('gameStarted', (data) => {
     clientState.mapRenderer = new MapRenderer(data.mapData, data.cellSize);
 
 
-    // Crear el fondo del minimapa (solo una vez)
     createMinimapBackground(); 
 
 
@@ -1094,6 +1066,7 @@ socket.on('gameStarted', (data) => {
     resizeCanvas(); 
 
 
+    // --- v1.2: Iniciar bucle de renderizado ---
     if (!animationFrameId) {
         animationFrameId = requestAnimationFrame(gameLoopRender);
     }
@@ -1105,7 +1078,14 @@ socket.on('gameState', (snapshot) => {
 });
 
 
+// --- v1.2: LÓGICA DE GAME OVER MODIFICADA ---
 socket.on('gameOver', (data) => {
+    // Detener el bucle de renderizado
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+    }
+    
     clientState.currentState = 'gameOver';
     document.getElementById('finalScore').textContent = data.finalScore;
     document.getElementById('finalWave').textContent = data.finalWave;
@@ -1115,13 +1095,16 @@ socket.on('gameOver', (data) => {
 
 socket.on('gameEnded', () => {
     console.warn('La partida terminó.');
-    clientState.currentState = 'menu';
-    clientState.roomId = null;
-    clientState.me.isHost = false;
+    
+    // Detener el bucle de renderizado
     if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
         animationFrameId = null;
     }
+
+    clientState.currentState = 'menu';
+    clientState.roomId = null;
+    clientState.me.isHost = false;
     updateUI();
 });
 
@@ -1131,9 +1114,6 @@ socket.on('playerDisconnected', (playerId) => {
 });
 
 
-/**
- * NUEVO LISTENER: Recibe la lista de salas del servidor
- */
 socket.on('gameList', (games) => {
     populateRoomList(games);
 });
@@ -1147,13 +1127,9 @@ document.getElementById('createGameButton').addEventListener('click', () => {
 });
 
 
-/**
- * NUEVO: Botón para abrir el buscador de salas
- */
 document.getElementById('browseGamesButton').addEventListener('click', () => {
     clientState.currentState = 'roomList';
     updateUI();
-    // Mostrar un "cargando" y pedir la lista
     const container = document.getElementById('roomListContainer');
     if (container) {
         container.innerHTML = '<p style="padding: 20px; color: #aaa; text-align: center;">Buscando salas...</p>';
@@ -1162,9 +1138,6 @@ document.getElementById('browseGamesButton').addEventListener('click', () => {
 });
 
 
-/**
- * NUEVO: Botón para refrescar la lista de salas
- */
 document.getElementById('refreshRoomListButton').addEventListener('click', () => {
     const container = document.getElementById('roomListContainer');
     if (container) {
@@ -1174,9 +1147,6 @@ document.getElementById('refreshRoomListButton').addEventListener('click', () =>
 });
 
 
-/**
- * NUEVO: Botón para volver al menú desde la lista de salas
- */
 document.getElementById('backToMenuFromRoomListButton').addEventListener('click', () => {
     clientState.currentState = 'menu';
     updateUI();
@@ -1184,11 +1154,9 @@ document.getElementById('backToMenuFromRoomListButton').addEventListener('click'
 
 
 document.getElementById('joinGameButton').addEventListener('click', () => {
-    // Esta es ahora "Unirse por ID"
     const roomId = document.getElementById('roomIdInput').value.toUpperCase();
     const playerName = document.getElementById('playerNameInput').value || 'Anónimo';
     if (!roomId || roomId.length !== 4) {
-        // Mostrar error visual en lugar de alert
         const input = document.getElementById('roomIdInput');
         input.style.borderColor = '#F44336';
         input.style.boxShadow = '0 0 10px rgba(244, 67, 54, 0.5)';
@@ -1212,23 +1180,21 @@ document.getElementById('settingsButton').addEventListener('click', () => {
 document.getElementById('saveSettingsButton').addEventListener('click', () => {
     readConfigFromUI();
     saveConfig();
-    updateControlMethod(); // ACTUALIZAR método de control al guardar
+    updateControlMethod();
     clientState.currentState = 'menu';
     updateUI();
 });
 
 
 document.getElementById('resetSettingsButton').addEventListener('click', () => {
-    // Guardar el controlType actual para no resetearlo
     const currentControl = gameConfig.controlType;
     gameConfig = {...DEFAULT_CONFIG};
-    // Restaurarlo
     gameConfig.controlType = currentControl;
 
 
     applyConfigToUI();
     saveConfig();
-    updateControlMethod(); // ACTUALIZAR
+    updateControlMethod();
 });
 
 
@@ -1243,7 +1209,50 @@ document.getElementById('backToMenuButton').addEventListener('click', () => {
     if (clientState.currentState === 'lobby' && clientState.roomId) {
         socket.emit('leaveRoom', clientState.roomId);
     }
+    
+    // v1.2: Reseteo completo al salir
     clientState.currentState = 'menu';
+    clientState.roomId = null;
+    clientState.me.isHost = false;
+    if (animationFrameId) { // Asegurarse de parar el bucle si existiera
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+    }
+    updateUI();
+});
+
+
+// --- v1.2: LISTENERS POST-PARTIDA ---
+document.getElementById('continueGameButton').addEventListener('click', () => {
+    if (clientState.currentState === 'gameOver' && clientState.roomId) {
+        // Pedir al servidor que nos devuelva al lobby
+        socket.emit('returnToLobby', clientState.roomId);
+        
+        // El cliente se mueve al lobby. El servidor enviará un 'lobbyUpdate'
+        // que confirmará el estado para todos.
+        clientState.currentState = 'lobby';
+        updateUI();
+    }
+});
+
+
+document.getElementById('exitToMenuButton').addEventListener('click', () => {
+    if (clientState.roomId) {
+        // Informar al servidor que dejamos la sala
+        socket.emit('leaveRoom', clientState.roomId);
+    }
+    
+    // Resetear el estado del cliente al menú principal
+    clientState.currentState = 'menu';
+    clientState.roomId = null;
+    clientState.me.isHost = false;
+    
+    // El bucle de animación ya debería estar detenido por 'gameOver',
+    // pero lo comprobamos por si acaso.
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+    }
     updateUI();
 });
 
@@ -1257,6 +1266,7 @@ document.getElementById('setting_waveMultiplier_slider').addEventListener('input
 
 
 // --- INICIO ---
-loadConfig(); // Esto ahora llama a updateControlMethod() internamente
+loadConfig();
 updateUI();
-requestAnimationFrame(gameLoopRender);
+// v1.2: No iniciar el bucle aquí, se inicia con 'gameStarted'
+// requestAnimationFrame(gameLoopRender); 
