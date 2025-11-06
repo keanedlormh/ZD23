@@ -1,28 +1,24 @@
 /**
- * server/gameLogic.js - ACTUALIZADO
+ * server/gameLogic.js - ACTUALIZADO v1.2
  *
- * ¡GRAN CAMBIO! Se ha implementado una nueva lógica de colisiones
- * para solucionar el "atasco en las esquinas".
- *
- * 1. `checkMapCollision(entity)`:
- * - Reescrita para ser más precisa para círculos.
- * - Ahora comprueba 5 puntos: Centro, Arriba, Abajo, Izquierda, Derecha.
- *
- * 2. `ServerZombie.updateAI(...)`:
- * - Modificada para NO mover al zombie (`this.x = ...`).
- * - Ahora DEVUELVE el vector de movimiento deseado (ej: {dx: 0, dy: -3}).
- *
- * 3. `GameLogic.update()`:
- * - Implementa "COLISIÓN CON DESLIZAMIENTO" (Sliding Collision).
- * - Aplica el movimiento del vector en el eje X y en el eje Y por separado.
- * - Si un eje choca, se resetea, pero el otro puede continuar.
- * - ¡Esto permite a los zombies "deslizarse" por muros y esquinas!
+ * Esta versión incluye:
+ * 1. (v1.1) Colisión con deslizamiento (Sliding Collision) en update().
+ * 2. (v1.2) `spawnZombies` modificado para usar `getRandomOpenCellPosition`
+ * con las posiciones de los jugadores para un "spawn seguro".
+ * 3. (v1.2) `updatePlayerCostMap` modificado para generar el mapa de costes
+ * desde TODOS los jugadores vivos, para una IA multijugador real.
+ * 4. (v1.2) `update` (Lógica de Oleadas) modificada para usar el
+ * `waveMultiplier` como un porcentaje de aumento sobre la oleada
+ * anterior, con un mínimo de +1 zombie.
  */
+
 
 const ServerMapGenerator = require('./serverMapGenerator'); 
 const Pathfinder = require('./pathfinding');
 
+
 // --- ENTIDADES DE SERVIDOR ---
+
 
 class ServerEntity {
     constructor(id, x, y, radius, speed) {
@@ -34,6 +30,7 @@ class ServerEntity {
     }
 }
 
+
 class ServerBullet extends ServerEntity {
     constructor(id, x, y, dx, dy, speed, damage) {
         super(id, x, y, 4, speed);
@@ -43,11 +40,13 @@ class ServerBullet extends ServerEntity {
         this.ownerId = id.split('_')[1];
     }
 
+
     updatePosition() {
         this.x += this.dx * this.speed;
         this.y += this.dy * this.speed;
     }
 }
+
 
 class ServerPlayer extends ServerEntity {
     constructor(id, x, y, name, config) {
@@ -63,6 +62,7 @@ class ServerPlayer extends ServerEntity {
     }
 }
 
+
 class ServerZombie extends ServerEntity {
     constructor(id, x, y, config) {
         super(id, x, y, 14, config.zombieSpeed);
@@ -72,6 +72,7 @@ class ServerZombie extends ServerEntity {
         this.attackDamage = config.zombieAttack;
         this.attackCooldown = config.zombieAttackCooldown;
 
+
         // Direcciones (4-way) para el flow field
         this.directions = [
             { x: 0, y: -1 },  // Arriba
@@ -80,6 +81,7 @@ class ServerZombie extends ServerEntity {
             { x: -1, y: 0 }   // Izquierda
         ];
     }
+
 
     /**
      * IA REDISEÑADA: Sigue el Flow Field (playerCostMap)
@@ -94,15 +96,18 @@ class ServerZombie extends ServerEntity {
     updateAI(players, costMap, mapGenerator, deltaTime) {
         if (players.size === 0 || !costMap) return null;
 
+
         // 1. Encontrar el jugador vivo más cercano (SOLO para atacar)
         let target = null;
         let minDistanceSq = Infinity;
+
 
         players.forEach(player => {
             if (player.health > 0) {
                 const dx = player.x - this.x;
                 const dy = player.y - this.y;
                 const distSq = dx * dx + dy * dy;
+
 
                 if (distSq < minDistanceSq) {
                     minDistanceSq = distSq;
@@ -111,7 +116,9 @@ class ServerZombie extends ServerEntity {
             }
         });
 
+
         if (!target) return null;
+
 
         // 2. Lógica de Ataque (si está lo suficientemente cerca)
         const distance = Math.sqrt(minDistanceSq);
@@ -124,7 +131,9 @@ class ServerZombie extends ServerEntity {
             return null; // No te muevas si estás atacando
         }
 
+
         // 3. Lógica de Movimiento (Seguir el CostMap)
+
 
         // Obtener la celda actual del zombie
         const currentGrid = mapGenerator.worldToGrid(this.x, this.y);
@@ -133,13 +142,16 @@ class ServerZombie extends ServerEntity {
             return null;
         }
 
+
         // Encontrar el mejor vecino (coste más bajo)
         let bestCost = costMap[currentGrid.y][currentGrid.x];
         let bestDir = { dx: 0, dy: 0 }; // Dirección (en cuadrícula) al mejor vecino
 
+
         for (const dir of this.directions) {
             const newX = currentGrid.x + dir.x;
             const newY = currentGrid.y + dir.y;
+
 
             // Comprobar si el vecino es válido y transitable
             if (mapGenerator.isValid(newX, newY)) {
@@ -152,19 +164,24 @@ class ServerZombie extends ServerEntity {
             }
         }
 
+
         // 4. Calcular el vector de movimiento
         if (bestDir.dx !== 0 || bestDir.dy !== 0) {
             // Objetivo: moverse al *centro* de la celda vecina
             const targetCellX = currentGrid.x + bestDir.dx;
             const targetCellY = currentGrid.y + bestDir.dy;
 
+
             const targetWorldPos = mapGenerator.gridToWorld(targetCellX, targetCellY);
+
 
             // Calcular vector de movimiento hacia el centro de esa celda
             const moveDx = targetWorldPos.x - this.x;
             const moveDy = targetWorldPos.y - this.y;
 
+
             const moveDist = Math.sqrt(moveDx * moveDx + moveDy * moveDy);
+
 
             if (moveDist > 0) {
                 // Normalizar y aplicar velocidad
@@ -175,6 +192,7 @@ class ServerZombie extends ServerEntity {
                 };
             }
         }
+
 
         return null; // No hay movimiento
     }
@@ -188,6 +206,7 @@ class GameLogic {
     constructor(playerData, config) {
         this.config = config;
 
+
         this.map = new ServerMapGenerator({
             mapSize: config.mapSize,
             cellSize: 40,
@@ -195,7 +214,9 @@ class GameLogic {
             corridorWidth: config.corridorWidth
         });
 
+
         this.pathfinder = new Pathfinder(this.map.getNavigationGrid(), this.map.cellSize);
+
 
         this.entities = {
             players: new Map(), 
@@ -203,51 +224,70 @@ class GameLogic {
             bullets: new Map()
         };
 
+
         this.score = 0;
         this.wave = 1;
         this.running = true;
         this.lastUpdateTime = Date.now();
 
+
         this.playerCostMap = null; 
         this.pathfindUpdateTimer = 0;
         this.pathfindUpdateInterval = 500; 
+
+
+        // --- v1.2: AÑADIDO ---
+        // Rastrea cuántos zombies hubo en la última oleada
+        this.lastWaveZombieCount = config.initialZombies;
+        // --- FIN AÑADIDO v1.2 ---
+
 
         const spawn = this.map.getSpawnPoint();
         playerData.forEach(p => {
             this.entities.players.set(p.id, new ServerPlayer(p.id, spawn.x, spawn.y, p.name, config));
         });
 
-        this.spawnZombies(config.initialZombies);
+
+        // Spawn inicial basado en la configuración
+        this.spawnZombies(this.lastWaveZombieCount);
         this.updatePlayerCostMap();
     }
 
+
     /**
-     * Genera el mapa de costes (flow field) para los zombies.
+     * --- v1.2: MODIFICADO PARA MULTIJUGADOR ---
+     * Genera el mapa de costes (flow field) para los zombies
+     * basado en TODOS los jugadores vivos.
      */
     updatePlayerCostMap() {
-        let targetPlayer = null;
-        for (const player of this.entities.players.values()) {
-            if (player.health > 0) {
-                targetPlayer = player;
-                break; 
-            }
-        }
+        // 1. Obtener TODOS los jugadores vivos
+        const livingPlayers = Array.from(this.entities.players.values())
+                                   .filter(p => p.health > 0);
 
-        if (targetPlayer) {
-            const gridPos = this.map.worldToGrid(targetPlayer.x, targetPlayer.y);
-            this.playerCostMap = this.pathfinder.generatePlayerCostMap(gridPos);
+
+        if (livingPlayers.length > 0) {
+            // 2. Convertir sus posiciones del mundo a posiciones de cuadrícula
+            const playerGridPositions = livingPlayers.map(player => {
+                return this.map.worldToGrid(player.x, player.y);
+            });
+
+
+            // 3. Generar el mapa de costes desde todas esas posiciones
+            this.playerCostMap = this.pathfinder.generatePlayerCostMap(playerGridPositions);
         } else {
+            // No hay jugadores vivos, no hay mapa que generar
             this.playerCostMap = null;
         }
     }
 
 
     /**
-     * ¡FUNCIÓN DE COLISIÓN MEJORADA!
+     * ¡FUNCIÓN DE COLISIÓN MEJORADA! (v1.1)
      * Comprueba 5 puntos (Centro + N,S,E,W) para una colisión circular más precisa.
      */
     checkMapCollision(entity) {
         const radius = entity.radius;
+
 
         // Puntos a comprobar (Centro + 4 bordes del círculo)
         const checkPoints = [
@@ -258,12 +298,14 @@ class GameLogic {
             { x: entity.x, y: entity.y - radius }   // Arriba
         ];
 
+
         for (const p of checkPoints) {
             const gridPos = this.map.worldToGrid(p.x, p.y);
             if (!this.map.isValid(gridPos.x, gridPos.y)) {
                 return true; // Colisión si CUALQUIER punto está en un muro
             }
         }
+
 
         return false; // Sin colisión
     }
@@ -273,24 +315,47 @@ class GameLogic {
      * Comprueba colisión entre dos entidades circulares
      */
     checkEntityCollision(entityA, entityB) {
-        // ... (Esta función no se usa para zombies, pero la dejamos para balas)
         const dx = entityB.x - entityA.x;
         const dy = entityB.y - entityA.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         const minDistance = entityA.radius + entityB.radius;
 
+
         return distance < minDistance;
     }
 
 
+    /**
+     * --- v1.2: MODIFICADO PARA SPAWN SEGURO ---
+     * Genera zombies, pasando las posiciones de los jugadores
+     * al mapGenerator para asegurar una distancia mínima.
+     */
     spawnZombies(count) {
+        // Obtener posiciones de jugadores vivos
+        const playerPositions = Array.from(this.entities.players.values())
+            .filter(p => p.health > 0)
+            .map(p => ({ x: p.x, y: p.y }));
+
+
         for (let i = 0; i < count; i++) {
             const zombieId = `zombie_${Date.now()}_${i}`; 
-            const randomSpawn = this.map.getRandomOpenCellPosition();
+
+            // Pedir una posición segura
+            const randomSpawn = this.map.getRandomOpenCellPosition(playerPositions);
+
+
             if (randomSpawn) {
                 this.entities.zombies.set(
                     zombieId, 
                     new ServerZombie(zombieId, randomSpawn.x, randomSpawn.y, this.config)
+                );
+            } else {
+                // Fallback si no se encuentra un lugar (muy improbable)
+                console.warn(`[SPAWN] No se pudo encontrar un lugar seguro para el zombie ${i+1}/${count}. Usando spawn por defecto.`);
+                const fallbackSpawn = this.map.getSpawnPoint();
+                this.entities.zombies.set(
+                    zombieId, 
+                    new ServerZombie(zombieId, fallbackSpawn.x, fallbackSpawn.y, this.config)
                 );
             }
         }
@@ -298,9 +363,9 @@ class GameLogic {
 
 
     createBullet(playerId, x, y, dx, dy) {
-        // ... (Sin cambios en esta función)
         const player = this.entities.players.get(playerId);
         if (!player || player.health <= 0) return;
+
 
         const currentTime = Date.now();
         if (currentTime - player.lastShotTime < player.shootCooldown) {
@@ -308,9 +373,11 @@ class GameLogic {
         }
         player.lastShotTime = currentTime;
 
+
         const bulletId = `bullet_${playerId}_${currentTime}`; 
         const startX = x + dx * (player.radius + 4); 
         const startY = y + dy * (player.radius + 4);
+
 
         const newBullet = new ServerBullet(
             bulletId, startX, startY, dx, dy, 
@@ -326,6 +393,7 @@ class GameLogic {
         const deltaTime = currentTime - this.lastUpdateTime; 
         this.lastUpdateTime = currentTime;
 
+
         // 1. Actualizar el mapa de costes (Flow Field)
         this.pathfindUpdateTimer += deltaTime;
         if (this.pathfindUpdateTimer > this.pathfindUpdateInterval) {
@@ -334,24 +402,28 @@ class GameLogic {
         }
 
 
-        // 2. Actualizar Jugadores (CON COLISIÓN DESLIZANTE)
+        // 2. Actualizar Jugadores (CON COLISIÓN DESLIZANTE v1.1)
         this.entities.players.forEach(player => {
             if (player.health <= 0) {
                 player.isDead = true;
                 return;
             }
 
+
             const oldX = player.x;
             const oldY = player.y;
 
+
             const moveX = player.input.moveX * player.speed;
             const moveY = player.input.moveY * player.speed;
+
 
             // Mover en X
             player.x += moveX;
             if (this.checkMapCollision(player)) {
                 player.x = oldX; // Colisión, resetear X
             }
+
 
             // Mover en Y
             player.y += moveY;
@@ -366,13 +438,15 @@ class GameLogic {
         });
 
 
-        // 3. Actualizar Zombies (CON COLISIÓN DESLIZANTE)
+        // 3. Actualizar Zombies (CON COLISIÓN DESLIZANTE v1.1)
         this.entities.zombies.forEach(zombie => {
             const oldX = zombie.x;
             const oldY = zombie.y;
 
+
             // La IA ahora solo devuelve un vector, no mueve al zombie
             const moveVector = zombie.updateAI(this.entities.players, this.playerCostMap, this.map, deltaTime);
+
 
             if (moveVector) {
                 // Mover en X
@@ -380,6 +454,7 @@ class GameLogic {
                 if (this.checkMapCollision(zombie)) {
                     zombie.x = oldX; // Colisión, resetear X
                 }
+
 
                 // Mover en Y
                 zombie.y += moveVector.dy;
@@ -389,6 +464,7 @@ class GameLogic {
             }
         });
 
+
         // 4. Actualizar Balas
         const bulletsToRemove = [];
         const zombiesToRemove = [];
@@ -396,6 +472,7 @@ class GameLogic {
 
         this.entities.bullets.forEach(bullet => {
             bullet.updatePosition();
+
 
             // Usamos la colisión de 5 puntos también para la bala
             if (this.checkMapCollision(bullet)) {
@@ -409,6 +486,7 @@ class GameLogic {
                 if (this.checkEntityCollision(bullet, zombie)) {
                     zombie.health -= bullet.damage;
                     bulletsToRemove.push(bullet.id);
+
 
                     if (zombie.health <= 0) {
                         zombiesToRemove.push(zombie.id);
@@ -427,14 +505,34 @@ class GameLogic {
         zombiesToRemove.forEach(id => this.entities.zombies.delete(id));
 
 
-        // 5. Lógica de Oleadas
+        // --- v1.2: LÓGICA DE OLEADAS MODIFICADA ---
         if (this.entities.zombies.size === 0) {
             this.wave++;
             this.score += 100 * this.wave;
-            const zombieCount = Math.floor(this.wave * this.config.waveMultiplier + this.config.initialZombies);
-            this.spawnZombies(zombieCount);
-            console.log(`[SERVER] Iniciando oleada ${this.wave} con ${zombieCount} zombies`);
+
+            // 1. Obtener la base de la oleada anterior
+            const baseCount = this.lastWaveZombieCount;
+            // 2. Obtener el multiplicador (ej: 1.5 para 50%)
+            const multiplier = this.config.waveMultiplier;
+            // 3. Calcular el aumento (ej: 1.5 - 1.0 = 0.5)
+            const increasePercentage = multiplier - 1;
+            // 4. Calcular el número de zombies a añadir (ej: 10 * 0.5 = 5)
+            const increaseAmount = baseCount * increasePercentage;
+
+
+            // 5. El aumento es al menos 1 (redondeado)
+            const increase = Math.max(1, Math.round(increaseAmount));
+
+
+            // 6. Calcular el nuevo total y guardarlo
+            const newZombieCount = baseCount + increase;
+            this.lastWaveZombieCount = newZombieCount;
+
+
+            this.spawnZombies(newZombieCount);
+            console.log(`[SERVER] Iniciando oleada ${this.wave} con ${newZombieCount} zombies (Base: ${baseCount}, Aumento: ${increase})`);
         }
+        // --- FIN MODIFICACIÓN v1.2 ---
     }
 
 
