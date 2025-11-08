@@ -1,15 +1,19 @@
 /**
- * server/gameLogic.js - ACTUALIZADO v1.2
+ * server/gameLogic.js - ACTUALIZADO v1.4
  *
- * Esta versión incluye:
- * 1. (v1.1) Colisión con deslizamiento (Sliding Collision) en update().
- * 2. (v1.2) `spawnZombies` modificado para usar `getRandomOpenCellPosition`
- * con las posiciones de los jugadores para un "spawn seguro".
- * 3. (v1.2) `updatePlayerCostMap` modificado para generar el mapa de costes
- * desde TODOS los jugadores vivos, para una IA multijugador real.
- * 4. (v1.2) `update` (Lógica de Oleadas) modificada para usar el
- * `waveMultiplier` como un porcentaje de aumento sobre la oleada
- * anterior, con un mínimo de +1 zombie.
+ * 1. (v1.3) Lógica de 2 Fases del Núcleo.
+ * 2. (v1.4) `ServerPlayer` tiene nueva propiedad: `isPendingSpawn`.
+ * 3. (v1.4) Constructor: Marca a los jugadores iniciales como `isPendingSpawn = false`.
+ * 4. (v1.4) NUEVA FUNCIÓN: `addPlayer(playerData, config)`
+ * - Añade un nuevo jugador a `entities.players`.
+ * - Lo marca como `isDead = true` y `isPendingSpawn = true`.
+ * 5. (v1.4) `spawnNewCore()` (Inicio de Oleada):
+ * - Busca al jugador con más vida como "ancla" para reapariciones.
+ * - CURA a todos los jugadores vivos a vida máxima.
+ * - REVIVE y TELETRANSPORTA a todos los jugadores muertos Y pendientes
+ * cerca del jugador "ancla".
+ * 6. (v1.4) `isGameOver()` MODIFICADO:
+ * - El juego solo termina si TODOS los jugadores (no pendientes) están muertos.
  */
 
 
@@ -48,6 +52,7 @@ class ServerBullet extends ServerEntity {
 }
 
 
+// --- v1.4: ServerPlayer MODIFICADO ---
 class ServerPlayer extends ServerEntity {
     constructor(id, x, y, name, config) {
         super(id, x, y, 15, config.playerSpeed);
@@ -59,6 +64,9 @@ class ServerPlayer extends ServerEntity {
         this.lastShotTime = 0;
         this.isDead = false;
         this.shootCooldown = config.shootCooldown;
+
+        // v1.4: Estado para 'Join in Progress'
+        this.isPendingSpawn = false; 
     }
 }
 
@@ -73,31 +81,16 @@ class ServerZombie extends ServerEntity {
         this.attackCooldown = config.zombieAttackCooldown;
 
 
-        // Direcciones (4-way) para el flow field
         this.directions = [
-            { x: 0, y: -1 },  // Arriba
-            { x: 1, y: 0 },   // Derecha
-            { x: 0, y: 1 },   // Abajo
-            { x: -1, y: 0 }   // Izquierda
+            { x: 0, y: -1 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }
         ];
     }
 
 
-    /**
-     * IA REDISEÑADA: Sigue el Flow Field (playerCostMap)
-     * MODIFICADO: Ahora DEVUELVE un vector de movimiento {dx, dy}
-     *
-     * @param {Map} players - Mapa de jugadores (para atacar)
-     * @param {Array} costMap - El mapa 2D de costes generado por el Pathfinder
-     * @param {ServerMapGenerator} mapGenerator - Para helpers de coordenadas
-     * @param {number} deltaTime - Tiempo desde el último frame
-     * @returns {Object} Un vector de movimiento {dx, dy} o null
-     */
     updateAI(players, costMap, mapGenerator, deltaTime) {
         if (players.size === 0 || !costMap) return null;
 
 
-        // 1. Encontrar el jugador vivo más cercano (SOLO para atacar)
         let target = null;
         let minDistanceSq = Infinity;
 
@@ -120,7 +113,6 @@ class ServerZombie extends ServerEntity {
         if (!target) return null;
 
 
-        // 2. Lógica de Ataque (si está lo suficientemente cerca)
         const distance = Math.sqrt(minDistanceSq);
         if (distance <= this.radius + target.radius + 10) {
             const currentTime = Date.now();
@@ -128,24 +120,18 @@ class ServerZombie extends ServerEntity {
                 target.health = Math.max(0, target.health - this.attackDamage);
                 this.lastAttackTime = currentTime;
             }
-            return null; // No te muevas si estás atacando
-        }
-
-
-        // 3. Lógica de Movimiento (Seguir el CostMap)
-
-
-        // Obtener la celda actual del zombie
-        const currentGrid = mapGenerator.worldToGrid(this.x, this.y);
-        if (!mapGenerator.isValid(currentGrid.x, currentGrid.y)) {
-             // El zombie está atascado o fuera del mapa
             return null;
         }
 
 
-        // Encontrar el mejor vecino (coste más bajo)
+        const currentGrid = mapGenerator.worldToGrid(this.x, this.y);
+        if (!mapGenerator.isValid(currentGrid.x, currentGrid.y)) {
+            return null;
+        }
+
+
         let bestCost = costMap[currentGrid.y][currentGrid.x];
-        let bestDir = { dx: 0, dy: 0 }; // Dirección (en cuadrícula) al mejor vecino
+        let bestDir = { dx: 0, dy: 0 };
 
 
         for (const dir of this.directions) {
@@ -153,10 +139,8 @@ class ServerZombie extends ServerEntity {
             const newY = currentGrid.y + dir.y;
 
 
-            // Comprobar si el vecino es válido y transitable
             if (mapGenerator.isValid(newX, newY)) {
                 const newCost = costMap[newY][newX];
-                // Si esta celda es "mejor" (más cercana al jugador), tomarla
                 if (newCost < bestCost) {
                     bestCost = newCost;
                     bestDir = { dx: dir.x, dy: dir.y };
@@ -165,36 +149,95 @@ class ServerZombie extends ServerEntity {
         }
 
 
-        // 4. Calcular el vector de movimiento
         if (bestDir.dx !== 0 || bestDir.dy !== 0) {
-            // Objetivo: moverse al *centro* de la celda vecina
             const targetCellX = currentGrid.x + bestDir.dx;
             const targetCellY = currentGrid.y + bestDir.dy;
-
-
             const targetWorldPos = mapGenerator.gridToWorld(targetCellX, targetCellY);
 
 
-            // Calcular vector de movimiento hacia el centro de esa celda
             const moveDx = targetWorldPos.x - this.x;
             const moveDy = targetWorldPos.y - this.y;
-
-
             const moveDist = Math.sqrt(moveDx * moveDx + moveDy * moveDy);
 
 
             if (moveDist > 0) {
-                // Normalizar y aplicar velocidad
-                // Devolvemos el vector de movimiento completo
                 return {
                     dx: (moveDx / moveDist) * this.speed,
                     dy: (moveDy / moveDist) * this.speed
                 };
             }
         }
+        return null;
+    }
+}
 
 
-        return null; // No hay movimiento
+// --- v1.3: Clase de Núcleo (con 2 Fases) ---
+class ServerZombieCore {
+    constructor(id, x, y, wave, config) {
+        this.id = id;
+        this.x = x;
+        this.y = y;
+        this.config = config;
+        this.wave = wave;
+
+
+        this.size = 40;
+        this.radius = 20; 
+
+
+        this.currentPhase = 'phase1';
+        this.phase1ZombiesSpawned = 0;
+
+
+        this.phase1ZombieAmount = Math.floor(config.initialZombies * Math.pow(config.waveMultiplier, wave - 1));
+        this.spawnRatePhase2 = Math.max(1000, config.coreBaseSpawnRate * Math.pow(0.9, wave - 1));
+        this.spawnRatePhase1 = Math.max(250, this.spawnRatePhase2 / config.coreBurstSpawnMultiplier);
+
+
+        this.currentSpawnRate = this.spawnRatePhase1;
+        this.spawnTimer = this.currentSpawnRate; 
+
+
+        this.maxHealth = Math.floor(config.coreBaseHealth * Math.pow(1.4, wave - 1));
+        this.health = this.maxHealth;
+
+        console.log(`[CORE OLEADA ${wave}] Fase 1: ${this.phase1ZombieAmount} zombies @ ${this.spawnRatePhase1.toFixed(0)}ms. Fase 2: Ritmo de ${this.spawnRatePhase2.toFixed(0)}ms. Vida: ${this.maxHealth}`);
+    }
+
+
+    update(deltaTime) {
+        this.spawnTimer -= deltaTime;
+
+        if (this.spawnTimer <= 0) {
+            this.spawnTimer += this.currentSpawnRate;
+
+            if (this.currentPhase === 'phase1') {
+                this.phase1ZombiesSpawned++;
+
+                if (this.phase1ZombiesSpawned >= this.phase1ZombieAmount) {
+                    this.currentPhase = 'phase2';
+                    this.currentSpawnRate = this.spawnRatePhase2;
+                    this.spawnTimer = this.currentSpawnRate;
+                    console.log(`[CORE OLEADA ${this.wave}] Fase 1 completada. Iniciando Fase 2 (Ritmo: ${this.currentSpawnRate.toFixed(0)}ms).`);
+                }
+            }
+
+            return true; // ¡Spawnear!
+        }
+        return false; // No spawnear
+    }
+
+
+    getSnapshot() {
+        return {
+            id: this.id,
+            x: this.x,
+            y: this.y,
+            size: this.size,
+            health: this.health,
+            maxHealth: this.maxHealth
+        };
     }
 }
 
@@ -221,12 +264,13 @@ class GameLogic {
         this.entities = {
             players: new Map(), 
             zombies: new Map(), 
-            bullets: new Map()
+            bullets: new Map(),
+            zombieCore: null
         };
 
 
         this.score = 0;
-        this.wave = 1;
+        this.wave = 0;
         this.running = true;
         this.lastUpdateTime = Date.now();
 
@@ -236,129 +280,178 @@ class GameLogic {
         this.pathfindUpdateInterval = 500; 
 
 
-        // --- v1.2: AÑADIDO ---
-        // Rastrea cuántos zombies hubo en la última oleada
-        this.lastWaveZombieCount = config.initialZombies;
-        // --- FIN AÑADIDO v1.2 ---
-
-
         const spawn = this.map.getSpawnPoint();
         playerData.forEach(p => {
-            this.entities.players.set(p.id, new ServerPlayer(p.id, spawn.x, spawn.y, p.name, config));
+            // v1.4: Crear jugador y marcarlo como NO pendiente
+            const newPlayer = new ServerPlayer(p.id, spawn.x, spawn.y, p.name, config);
+            newPlayer.isPendingSpawn = false; // Estos son los jugadores iniciales
+            this.entities.players.set(p.id, newPlayer);
         });
 
 
-        // Spawn inicial basado en la configuración
-        this.spawnZombies(this.lastWaveZombieCount);
+        this.spawnNewCore(); 
         this.updatePlayerCostMap();
     }
 
 
+    // --- v1.4: NUEVA FUNCIÓN 'addPlayer' ---
     /**
-     * --- v1.2: MODIFICADO PARA MULTIJUGADOR ---
-     * Genera el mapa de costes (flow field) para los zombies
-     * basado en TODOS los jugadores vivos.
+     * Añade un nuevo jugador a la partida en curso.
+     * Se añadirá como "pendiente" y aparecerá en la siguiente oleada.
      */
+    addPlayer(playerData, config) {
+        const spawn = this.map.getSpawnPoint(); // Spawn por defecto
+
+        // 1. Crear nueva entidad de jugador
+        const newPlayer = new ServerPlayer(playerData.id, spawn.x, spawn.y, playerData.name, config);
+
+        // 2. Ponerlo en estado "pendiente" y "muerto"
+        newPlayer.isDead = true;
+        newPlayer.health = 0;
+        newPlayer.isPendingSpawn = true; // Clave
+
+        // 3. Añadirlo a la lista de entidades
+        this.entities.players.set(newPlayer.id, newPlayer);
+
+        console.log(`[GAME] Jugador pendiente ${newPlayer.name} añadido. Esperando oleada ${this.wave + 1}.`);
+    }
+
+
+    // --- v1.4: 'spawnNewCore' MODIFICADO (Lógica de Revivir) ---
+    spawnNewCore() {
+        this.wave++;
+
+        // --- v1.4: Lógica de Curación y Reaparición ---
+
+        // 1. Encontrar un "jugador ancla" (el que tenga más vida) para reaparecer
+        let anchorPlayer = null;
+        let maxHealth = -1;
+        this.entities.players.forEach(p => {
+            // No contar jugadores pendientes como ancla
+            if (!p.isPendingSpawn && p.health > maxHealth) { 
+                maxHealth = p.health;
+                anchorPlayer = p;
+            }
+        });
+
+
+        // 2. Determinar posición de reaparición
+        let spawnPos;
+        if (anchorPlayer) {
+            // Reaparecer cerca del jugador con más vida
+            const anchorGridPos = this.map.worldToGrid(anchorPlayer.x, anchorPlayer.y);
+            spawnPos = this.map.findValidSpawnNear(anchorGridPos.x, anchorGridPos.y);
+        } else {
+            // Si no hay ancla (ej: todos murieron, o es la oleada 1)
+            spawnPos = this.map.getSpawnPoint(); 
+        }
+
+
+        // 3. Iterar y revivir a todos
+        this.entities.players.forEach(player => {
+            if (player.health > 0 && !player.isPendingSpawn) {
+                // JUGADOR VIVO: Curar a tope
+                player.health = player.maxHealth;
+            } else {
+                // JUGADOR MUERTO O PENDIENTE: Revivir y teletransportar
+                player.health = player.maxHealth;
+                player.isDead = false;
+                player.isPendingSpawn = false; // ¡Ahora está activo!
+                player.x = spawnPos.x;
+                player.y = spawnPos.y;
+            }
+        });
+
+        // --- Fin Lógica v1.4 ---
+
+
+        // 4. Encontrar spawn para el Núcleo (lejos de los jugadores revividos)
+        const playerPositions = Array.from(this.entities.players.values())
+            .map(p => ({ x: p.x, y: p.y }));
+
+
+        const coreSpawnPos = this.map.getRandomOpenCellPosition(playerPositions, 20);
+
+
+        if (!coreSpawnPos) {
+            console.error("[ERROR] No se pudo encontrar un spawn seguro para el Núcleo. Usando spawn por defecto.");
+            coreSpawnPos = this.map.getSpawnPoint();
+        }
+
+
+        // 5. Crear la nueva entidad Núcleo
+        const coreId = `core_${this.wave}`;
+        this.entities.zombieCore = new ServerZombieCore(coreId, coreSpawnPos.x, coreSpawnPos.y, this.wave, this.config);
+
+
+        this.pathfindUpdateTimer = this.pathfindUpdateInterval;
+    }
+
+
+    spawnZombieAtCore() {
+        if (!this.entities.zombieCore) return;
+
+
+        const core = this.entities.zombieCore;
+        const gridPos = this.map.worldToGrid(core.x, core.y);
+        const spawnPos = this.map.findValidSpawnNear(gridPos.x, gridPos.y);
+
+
+        if (spawnPos) {
+            const zombieId = `zombie_${Date.now()}_${Math.random()}`;
+            this.entities.zombies.set(
+                zombieId, 
+                new ServerZombie(zombieId, spawnPos.x, spawnPos.y, this.config)
+            );
+        } else {
+            console.warn(`[SPAWN] El núcleo en (${gridPos.x}, ${gridPos.y}) está bloqueado, no puede spawnear zombies.`);
+        }
+    }
+
+
     updatePlayerCostMap() {
-        // 1. Obtener TODOS los jugadores vivos
         const livingPlayers = Array.from(this.entities.players.values())
                                    .filter(p => p.health > 0);
 
 
         if (livingPlayers.length > 0) {
-            // 2. Convertir sus posiciones del mundo a posiciones de cuadrícula
             const playerGridPositions = livingPlayers.map(player => {
                 return this.map.worldToGrid(player.x, player.y);
             });
-
-
-            // 3. Generar el mapa de costes desde todas esas posiciones
             this.playerCostMap = this.pathfinder.generatePlayerCostMap(playerGridPositions);
         } else {
-            // No hay jugadores vivos, no hay mapa que generar
             this.playerCostMap = null;
         }
     }
 
 
-    /**
-     * ¡FUNCIÓN DE COLISIÓN MEJORADA! (v1.1)
-     * Comprueba 5 puntos (Centro + N,S,E,W) para una colisión circular más precisa.
-     */
     checkMapCollision(entity) {
         const radius = entity.radius;
-
-
-        // Puntos a comprobar (Centro + 4 bordes del círculo)
         const checkPoints = [
-            { x: entity.x, y: entity.y },           // Centro
-            { x: entity.x + radius, y: entity.y },  // Derecha
-            { x: entity.x - radius, y: entity.y },  // Izquierda
-            { x: entity.x, y: entity.y + radius },  // Abajo
-            { x: entity.x, y: entity.y - radius }   // Arriba
+            { x: entity.x, y: entity.y },
+            { x: entity.x + radius, y: entity.y },
+            { x: entity.x - radius, y: entity.y },
+            { x: entity.x, y: entity.y + radius },
+            { x: entity.x, y: entity.y - radius }
         ];
 
 
         for (const p of checkPoints) {
             const gridPos = this.map.worldToGrid(p.x, p.y);
             if (!this.map.isValid(gridPos.x, gridPos.y)) {
-                return true; // Colisión si CUALQUIER punto está en un muro
+                return true;
             }
         }
-
-
-        return false; // Sin colisión
+        return false;
     }
 
 
-    /**
-     * Comprueba colisión entre dos entidades circulares
-     */
     checkEntityCollision(entityA, entityB) {
         const dx = entityB.x - entityA.x;
         const dy = entityB.y - entityA.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         const minDistance = entityA.radius + entityB.radius;
-
-
         return distance < minDistance;
-    }
-
-
-    /**
-     * --- v1.2: MODIFICADO PARA SPAWN SEGURO ---
-     * Genera zombies, pasando las posiciones de los jugadores
-     * al mapGenerator para asegurar una distancia mínima.
-     */
-    spawnZombies(count) {
-        // Obtener posiciones de jugadores vivos
-        const playerPositions = Array.from(this.entities.players.values())
-            .filter(p => p.health > 0)
-            .map(p => ({ x: p.x, y: p.y }));
-
-
-        for (let i = 0; i < count; i++) {
-            const zombieId = `zombie_${Date.now()}_${i}`; 
-
-            // Pedir una posición segura
-            const randomSpawn = this.map.getRandomOpenCellPosition(playerPositions);
-
-
-            if (randomSpawn) {
-                this.entities.zombies.set(
-                    zombieId, 
-                    new ServerZombie(zombieId, randomSpawn.x, randomSpawn.y, this.config)
-                );
-            } else {
-                // Fallback si no se encuentra un lugar (muy improbable)
-                console.warn(`[SPAWN] No se pudo encontrar un lugar seguro para el zombie ${i+1}/${count}. Usando spawn por defecto.`);
-                const fallbackSpawn = this.map.getSpawnPoint();
-                this.entities.zombies.set(
-                    zombieId, 
-                    new ServerZombie(zombieId, fallbackSpawn.x, fallbackSpawn.y, this.config)
-                );
-            }
-        }
     }
 
 
@@ -402,70 +495,67 @@ class GameLogic {
         }
 
 
-        // 2. Actualizar Jugadores (CON COLISIÓN DESLIZANTE v1.1)
+        // 2. Actualizar Jugadores
         this.entities.players.forEach(player => {
-            if (player.health <= 0) {
-                player.isDead = true;
+            // v1.4: No actualizar jugadores muertos o pendientes
+            if (player.health <= 0 || player.isPendingSpawn) {
+                player.isDead = true; // Asegurarse
                 return;
             }
-
-
             const oldX = player.x;
             const oldY = player.y;
-
-
             const moveX = player.input.moveX * player.speed;
             const moveY = player.input.moveY * player.speed;
-
-
-            // Mover en X
             player.x += moveX;
             if (this.checkMapCollision(player)) {
-                player.x = oldX; // Colisión, resetear X
+                player.x = oldX;
             }
-
-
-            // Mover en Y
             player.y += moveY;
             if (this.checkMapCollision(player)) {
-                player.y = oldY; // Colisión, resetear Y
+                player.y = oldY;
             }
-
-
             if (player.input.isShooting) {
                 this.createBullet(player.id, player.x, player.y, player.input.shootX, player.input.shootY);
             }
         });
 
 
-        // 3. Actualizar Zombies (CON COLISIÓN DESLIZANTE v1.1)
+        // 3. Actualizar Zombies
         this.entities.zombies.forEach(zombie => {
             const oldX = zombie.x;
             const oldY = zombie.y;
-
-
-            // La IA ahora solo devuelve un vector, no mueve al zombie
             const moveVector = zombie.updateAI(this.entities.players, this.playerCostMap, this.map, deltaTime);
-
-
             if (moveVector) {
-                // Mover en X
                 zombie.x += moveVector.dx;
                 if (this.checkMapCollision(zombie)) {
-                    zombie.x = oldX; // Colisión, resetear X
+                    zombie.x = oldX;
                 }
-
-
-                // Mover en Y
                 zombie.y += moveVector.dy;
                 if (this.checkMapCollision(zombie)) {
-                    zombie.y = oldY; // Colisión, resetear Y
+                    zombie.y = oldY;
                 }
             }
         });
 
 
-        // 4. Actualizar Balas
+        // 4. Lógica del Núcleo y Oleadas
+        if (this.entities.zombieCore) {
+            const core = this.entities.zombieCore;
+            const shouldSpawn = core.update(deltaTime);
+            if (shouldSpawn) {
+                this.spawnZombieAtCore();
+            }
+        } else {
+            // NO HAY NÚCLEO: Comprobar si la oleada ha terminado
+            if (this.entities.zombies.size === 0) {
+                // ¡Oleada terminada!
+                this.score += 100 * this.wave;
+                this.spawnNewCore(); // Iniciar siguiente oleada (curará/revivirá jugadores)
+            }
+        }
+
+
+        // 5. Actualizar Balas
         const bulletsToRemove = [];
         const zombiesToRemove = [];
 
@@ -474,15 +564,32 @@ class GameLogic {
             bullet.updatePosition();
 
 
-            // Usamos la colisión de 5 puntos también para la bala
             if (this.checkMapCollision(bullet)) {
                 bulletsToRemove.push(bullet.id);
                 return;
             }
 
 
+            if (this.entities.zombieCore) {
+                const core = this.entities.zombieCore;
+                if (this.checkEntityCollision(bullet, core)) {
+                    bulletsToRemove.push(bullet.id);
+                    core.health -= bullet.damage;
+
+                    if (core.health <= 0) {
+                        this.entities.zombieCore = null;
+                        this.score += 500 * this.wave;
+                        const player = this.entities.players.get(bullet.ownerId);
+                        if (player) {
+                            player.kills++;
+                        }
+                    }
+                    return;
+                }
+            }
+
+
             this.entities.zombies.forEach(zombie => {
-                // checkEntityCollision (círculo-círculo) es perfecto para esto
                 if (this.checkEntityCollision(bullet, zombie)) {
                     zombie.health -= bullet.damage;
                     bulletsToRemove.push(bullet.id);
@@ -503,36 +610,6 @@ class GameLogic {
 
         bulletsToRemove.forEach(id => this.entities.bullets.delete(id));
         zombiesToRemove.forEach(id => this.entities.zombies.delete(id));
-
-
-        // --- v1.2: LÓGICA DE OLEADAS MODIFICADA ---
-        if (this.entities.zombies.size === 0) {
-            this.wave++;
-            this.score += 100 * this.wave;
-
-            // 1. Obtener la base de la oleada anterior
-            const baseCount = this.lastWaveZombieCount;
-            // 2. Obtener el multiplicador (ej: 1.5 para 50%)
-            const multiplier = this.config.waveMultiplier;
-            // 3. Calcular el aumento (ej: 1.5 - 1.0 = 0.5)
-            const increasePercentage = multiplier - 1;
-            // 4. Calcular el número de zombies a añadir (ej: 10 * 0.5 = 5)
-            const increaseAmount = baseCount * increasePercentage;
-
-
-            // 5. El aumento es al menos 1 (redondeado)
-            const increase = Math.max(1, Math.round(increaseAmount));
-
-
-            // 6. Calcular el nuevo total y guardarlo
-            const newZombieCount = baseCount + increase;
-            this.lastWaveZombieCount = newZombieCount;
-
-
-            this.spawnZombies(newZombieCount);
-            console.log(`[SERVER] Iniciando oleada ${this.wave} con ${newZombieCount} zombies (Base: ${baseCount}, Aumento: ${increase})`);
-        }
-        // --- FIN MODIFICACIÓN v1.2 ---
     }
 
 
@@ -546,7 +623,10 @@ class GameLogic {
                 health: p.health,
                 kills: p.kills,
                 shootX: p.input.shootX, 
-                shootY: p.input.shootY
+                shootY: p.input.shootY,
+                // v1.4: Enviar estado (el cliente lo usará para cámara/HUD)
+                isPending: p.isPendingSpawn,
+                isDead: p.isDead 
             })),
             zombies: Array.from(this.entities.zombies.values()).map(z => ({
                 id: z.id,
@@ -560,6 +640,7 @@ class GameLogic {
                 x: b.x,
                 y: b.y
             })),
+            zombieCore: this.entities.zombieCore ? this.entities.zombieCore.getSnapshot() : null,
             score: this.score,
             wave: this.wave
         };
@@ -568,7 +649,8 @@ class GameLogic {
 
     handlePlayerInput(id, input) {
         const player = this.entities.players.get(id);
-        if (player && player.health > 0) {
+        // v1.4: Asegurarse que el jugador está vivo y no pendiente
+        if (player && player.health > 0 && !player.isPendingSpawn) {
             player.input = input;
         }
     }
@@ -579,9 +661,22 @@ class GameLogic {
     }
 
 
+    // --- v1.4: 'isGameOver' MODIFICADO ---
     isGameOver() {
-        const activePlayers = Array.from(this.entities.players.values()).filter(p => p.health > 0);
-        return activePlayers.length === 0 && this.entities.players.size > 0;
+        // Filtrar jugadores que *no* están pendientes
+        const activePlayers = Array.from(this.entities.players.values())
+                                .filter(p => !p.isPendingSpawn);
+
+        if (activePlayers.length === 0) {
+            // No hay jugadores activos (ej: todos se fueron, o solo hay pendientes)
+            // Si el juego no ha empezado (oleada 0?) no es game over.
+            return this.wave > 0;
+        }
+
+
+        // Comprobar si todos los jugadores activos están muertos
+        const livingActivePlayers = activePlayers.filter(p => p.health > 0);
+        return livingActivePlayers.length === 0;
     }
 
 
