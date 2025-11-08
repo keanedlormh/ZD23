@@ -7,554 +7,25 @@
 
     <!-- FUENTES DE LA ESTÉTICA "APOCALIPSIS" -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <!-- CORREGIDO: "https://https://" -> "https://" -->
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
 
-    <!-- ESTILOS DE LA ESTÉTICA "APOCALIPSIS" -->
-    <style>
-        /* --- PALETA ZOMBIE APOCALYPSE (GRANATE, NARANJA, VIOLETA) --- */
-        :root {
-            --color-fondo: #000000;
-            --color-fondo-secundario: #111111;
-            --color-menu: rgba(59, 0, 59, 0.95);
-            --color-texto: #e0e0e8;
+    <!-- v1.5: ESTILOS SEPARADOS -->
+    <link rel="stylesheet" href="css/style.css">
 
-            --color-acento-principal: #FF7518;
-            --color-acento-secundario: #FF0000;
-            --color-acento-terciario: #4A044E;
-            --color-acento-cuaternario: #800000;
-
-            --color-primario: #FF7518;
-            --color-primario-hover: #FFA500;
-            --color-primario-sombra: rgba(255, 117, 24, 0.6);
-            --color-primario-sombra-oscura: #600000;
-            --color-primario-texto: #000000;
-
-            --color-peligro: #D90000;
-            --color-peligro-hover: #FF3333;
-            --color-peligro-sombra: rgba(217, 0, 0, 0.8);
-            --color-peligro-sombra-oscura: #600000;
-            --color-peligro-texto: #FFFFFF;
-
-            --color-secundario: #800000;
-            --color-secundario-hover: #A00000;
-            --color-secundario-sombra: rgba(128, 0, 0, 0.5);
-            --color-secundario-sombra-oscura: #400000;
-            --color-secundario-texto: #FFFFFF;
-
-            --fuente-titulos: 'Orbitron', sans-serif;
-            --fuente-cuerpo: 'Rajdhani', sans-serif;
-        }
-
-        @keyframes glitch {
-            0%, 100% { text-shadow: 2px 2px var(--color-acento-principal), -2px -2px var(--color-acento-secundario); }
-            25% { text-shadow: -2px 2px var(--color-acento-secundario), 2px -2px var(--color-acento-principal); }
-            50% { text-shadow: 2px -2px var(--color-acento-cuaternario), -2px 2px var(--color-acento-terciario); }
-            75% { text-shadow: -2px -2px var(--color-acento-principal), 2px 2px var(--color-acento-secundario); }
-        }
-
-        @keyframes pulse-neon {
-            0%, 100% { box-shadow: 0 0 10px var(--color-primario-sombra), 0 0 20px var(--color-primario-sombra), inset 0 0 10px rgba(255, 117, 24, 0.2); }
-            50% { box-shadow: 0 0 20px var(--color-primario-sombra), 0 0 40px var(--color-primario-sombra), inset 0 0 20px rgba(255, 117, 24, 0.3); }
-        }
-
-        @keyframes float {
-            0%, 100% { transform: translateY(0px); }
-            50% { transform: translateY(-10px); }
-        }
-
-        /* --- ESTILOS GLOBALES --- */
-        body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background: 
-                repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255, 117, 24, 0.03) 2px, rgba(255, 117, 24, 0.03) 4px),
-                radial-gradient(ellipse at center, #111 0%, var(--color-fondo) 100%);
-            color: var(--color-texto);
-            font-family: var(--fuente-cuerpo);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            position: relative;
-        }
-
-        /* --- ESTILOS DE MENÚS --- */
-        .menu-container {
-            position: absolute;
-            background: linear-gradient(135deg, rgba(20, 0, 20, 0.98) 0%, rgba(59, 0, 59, 0.95) 100%);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 2px solid transparent;
-            border-image: linear-gradient(135deg, var(--color-acento-principal), var(--color-acento-terciario), var(--color-acento-secundario)) 1;
-            clip-path: polygon(0 8px, 8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px));
-            box-shadow: 0 0 30px rgba(255, 117, 24, 0.4), 0 0 60px rgba(74, 4, 78, 0.3), inset 0 0 40px rgba(0, 0, 0, 0.8);
-            padding: 40px;
-            display: flex;
-            flex-direction: column;
-            align-items: stretch;
-            max-width: 550px;
-            max-height: 90vh;
-            width: 90%;
-            z-index: 1000;
-            overflow-y: auto;
-            box-sizing: border-box;
-            animation: float 6s ease-in-out infinite;
-        }
-
-        .menu-container::-webkit-scrollbar { width: 8px; }
-        .menu-container::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.5); }
-        .menu-container::-webkit-scrollbar-thumb { background: var(--color-acento-principal); box-shadow: 0 0 10px var(--color-acento-principal); }
-
-        #menuScreen h2 {
-            font-family: var(--fuente-titulos);
-            font-size: 3.8em;
-            font-weight: 900;
-            color: var(--color-acento-principal);
-            letter-spacing: 6px;
-            margin-top: 0;
-            margin-bottom: 30px;
-            text-align: center;
-            text-transform: uppercase;
-            text-shadow: 0 0 10px var(--color-acento-principal), 0 0 20px var(--color-acento-principal), 0 0 30px var(--color-acento-terciario), 2px 2px 0px rgba(0, 0, 0, 0.8);
-            position: relative;
-            animation: glitch 5s infinite;
-        }
-
-        #menuScreen h2::before {
-            content: '';
-            position: absolute;
-            bottom: -10px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 60%;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, var(--color-acento-principal), transparent);
-            box-shadow: 0 0 10px var(--color-acento-principal);
-        }
-
-        .menu-container h2 {
-            font-family: var(--fuente-titulos);
-            font-size: 2.0em;
-            font-weight: 700;
-            color: var(--color-acento-principal);
-            letter-spacing: 3px;
-            margin-top: 0;
-            margin-bottom: 25px;
-            text-align: center;
-            text-transform: uppercase;
-            text-shadow: 0 0 10px var(--color-primario-sombra);
-        }
-
-        .menu-container h3 {
-            font-family: var(--fuente-titulos);
-            color: var(--color-acento-secundario);
-            text-transform: uppercase;
-            letter-spacing: 3px;
-            font-size: 1.15em;
-            text-shadow: 0 0 10px var(--color-acento-secundario);
-        }
-
-        hr {
-            border: 0;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, var(--color-acento-terciario), transparent);
-            opacity: 0.5;
-            margin: 25px 0;
-            width: 100%;
-            box-shadow: 0 0 10px var(--color-acento-terciario);
-        }
-
-        /* --- INPUTS --- */
-        input[type="text"], input[type="number"], select {
-            padding: 14px;
-            margin: 10px 0;
-            width: 100%;
-            box-sizing: border-box;
-            background: linear-gradient(135deg, #0a0a15 0%, #15151f 100%);
-            border: 2px solid #333;
-            border-left: 3px solid var(--color-acento-principal);
-            color: var(--color-texto);
-            font-family: var(--fuente-cuerpo);
-            font-weight: 500;
-            font-size: 1.1em;
-            clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
-            transition: all 0.3s;
-            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.8);
-        }
-
-        input[type="text"]:focus, input[type="number"]:focus, select:focus {
-            border-color: var(--color-acento-principal);
-            box-shadow: 0 0 15px var(--color-primario-sombra), inset 0 2px 8px rgba(0, 0, 0, 0.8);
-            outline: none;
-            background: linear-gradient(135deg, #0f0f1a 0%, #1a1a25 100%);
-        }
-
-        /* CORREGIDO: Fondo de autocompletar */
-        input:-webkit-autofill,
-        input:-webkit-autofill:hover, 
-        input:-webkit-autofill:focus, 
-        input:-webkit-autofill:active  {
-            -webkit-box-shadow: 0 0 0 30px #15151f inset !important;
-            -webkit-text-fill-color: var(--color-texto) !important;
-            caret-color: var(--color-texto) !important;
-            font-family: var(--fuente-cuerpo) !important;
-            font-weight: 500 !important;
-            font-size: 1.1em !important;
-        }
-
-        /* --- BOTONES --- */
-        .btn {
-            padding: 14px;
-            margin: 10px 0;
-            border: none;
-            box-sizing: border-box;
-            font-family: var(--fuente-titulos);
-            font-weight: 700;
-            font-size: 1.05em;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            color: white;
-            cursor: pointer;
-            position: relative;
-            overflow: hidden;
-            clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
-            transition: all 0.3s;
-            /* CORREGIDO: Propiedades de .btn base */
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            line-height: normal;
-            text-align: center;
-        }
-
-        .btn-block { width: 100%; }
-
-        .btn::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-            transition: left 0.5s;
-        }
-
-        .btn:hover:not(:disabled)::before { left: 100%; }
-        .btn:hover:not(:disabled) { transform: translateY(-3px); }
-        .btn:active:not(:disabled) { transform: translateY(1px); }
-
-        .btn:disabled {
-            background: #1a1a1a !important;
-            cursor: not-allowed;
-            opacity: 0.4;
-            box-shadow: none !important;
-            color: #555 !important;
-        }
-
-        /* --- ESTILOS DE COLORES --- */
-        .btn-primary { 
-            background: linear-gradient(135deg, var(--color-primario) 0%, var(--color-primario-hover) 100%);
-            color: var(--color-primario-texto);
-            text-shadow: 1px 1px 1px rgba(255, 255, 255, 0.2);
-            box-shadow: 0 0 20px var(--color-primario-sombra), 0 6px 0 var(--color-primario-sombra-oscura), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-            border-top: 2px solid rgba(255, 255, 255, 0.2);
-        }
-        .btn-primary:hover:not(:disabled) { 
-            box-shadow: 0 0 30px var(--color-primario-sombra), 0 8px 0 var(--color-primario-sombra-oscura), inset 0 1px 0 rgba(255, 255, 255, 0.4);
-        }
-
-        .btn-secondary { 
-            background: linear-gradient(135deg, var(--color-secundario) 0%, var(--color-secundario-hover) 100%);
-            color: var(--color-secundario-texto);
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
-            box-shadow: 0 0 15px var(--color-secundario-sombra), 0 6px 0 var(--color-secundario-sombra-oscura), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-            border-top: 2px solid rgba(255, 255, 255, 0.1);
-        }
-        .btn-secondary:hover:not(:disabled) { 
-            box-shadow: 0 0 25px var(--color-secundario-sombra), 0 8px 0 var(--color-secundario-sombra-oscura), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-        }
-
-        .btn-danger { 
-            background: linear-gradient(135deg, var(--color-peligro) 0%, var(--color-peligro-hover) 100%);
-            color: var(--color-peligro-texto);
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
-            box-shadow: 0 0 20px var(--color-peligro-sombra), 0 6px 0 var(--color-peligro-sombra-oscura), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-            border-top: 2px solid rgba(255, 255, 255, 0.2);
-        }
-        .btn-danger:hover:not(:disabled) { 
-            box-shadow: 0 0 30px var(--color-peligro-sombra), 0 8px 0 var(--color-peligro-sombra-oscura), inset 0 1px 0 rgba(255, 255, 255, 0.4);
-        }
-
-        /* --- FIX: CENTRADO ABSOLUTO PARA SPAN INTERNO (Tu corrección) --- */
-        .btn span {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 100%;
-            text-align: center;
-            line-height: 1;
-            pointer-events: none; /* Para que el clic atraviese el span */
-        }
-        
-        /* Caso especial para el botón de Configuración (icono + texto) */
-        #settingsButton span {
-            position: static; /* Anula el centrado absoluto */
-            transform: none;
-            width: auto;
-        }
-
-
-        /* --- PANTALLA DE JUEGO --- */
-        #gameCanvas {
-            display: block;
-            border: 3px solid var(--color-acento-principal);
-            background-color: var(--color-fondo-secundario);
-            cursor: crosshair;
-            box-shadow: 0 0 30px var(--color-primario-sombra), 0 0 60px rgba(74, 4, 78, 0.4), inset 0 0 40px rgba(0, 0, 0, 0.9);
-        }
-
-        /* --- LOBBY --- */
-        #lobbyPlayerList {
-            list-style: none;
-            padding: 15px;
-            margin-top: 15px;
-            text-align: left;
-            background: linear-gradient(135deg, rgba(255, 117, 24, 0.05) 0%, rgba(74, 4, 78, 0.05) 100%);
-            border-left: 3px solid var(--color-acento-principal);
-            clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
-            min-height: 100px;
-            box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.8);
-        }
-
-        #lobbyPlayerList li {
-            padding: 10px 8px;
-            border-bottom: 1px solid rgba(255, 117, 24, 0.2);
-            font-size: 1.1em;
-            font-weight: 500;
-            text-shadow: 0 0 5px rgba(255, 117, 24, 0.5);
-        }
-        #lobbyPlayerList li:last-child { border-bottom: none; }
-
-        #lobbyRoomId {
-            font-weight: 700;
-            font-size: 1.2em;
-            color: var(--color-acento-principal);
-            text-align: center;
-            text-shadow: 0 0 10px var(--color-acento-principal);
-        }
-
-        #hostConfigInfo {
-            margin: 15px 0;
-            padding: 15px;
-            background: linear-gradient(135deg, rgba(255, 117, 24, 0.1) 0%, rgba(74, 4, 78, 0.1) 100%);
-            border: 2px solid var(--color-acento-terciario);
-            border-left: 4px solid var(--color-acento-principal);
-            clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
-            font-size: 12px;
-            text-align: left;
-            box-shadow: 0 0 15px rgba(255, 117, 24, 0.3), inset 0 2px 10px rgba(0, 0, 0, 0.5);
-        }
-
-        /* --- AJUSTES --- */
-        .settings-group {
-            margin: 20px 0;
-            padding: 20px;
-            background: linear-gradient(135deg, rgba(10, 10, 20, 0.6) 0%, rgba(20, 10, 30, 0.6) 100%);
-            border-left: 4px solid var(--color-acento-secundario);
-            clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
-            text-align: left;
-            box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.8);
-        }
-
-        .setting-item {
-            margin: 12px 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .setting-item label {
-            flex: 1;
-            font-size: 1.0em;
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        input[type="range"] {
-            -webkit-appearance: none;
-            width: 100%;
-            height: 8px;
-            background: #222;
-            border: 1px solid #444;
-            border-radius: 5px;
-            outline: none;
-            transition: opacity 0.2s;
-        }
-
-        input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 22px;
-            height: 22px;
-            background: var(--color-acento-principal);
-            border: 2px solid #000;
-            border-radius: 50%;
-            cursor: pointer;
-            box-shadow: 0 0 10px var(--color-primario-sombra);
-        }
-
-        input[type="range"]::-moz-range-thumb {
-            width: 20px;
-            height: 20px;
-            background: var(--color-acento-principal);
-            border: 2px solid #000;
-            border-radius: 50%;
-            cursor: pointer;
-            box-shadow: 0 0 10px var(--color-primario-sombra);
-        }
-
-        .setting-item input[type="number"],
-        .setting-item select {
-            width: 100px;
-            padding: 10px;
-            margin: 0;
-            font-size: 1em;
-        }
-        #setting_controlType { width: 160px; }
-
-        .preset-buttons {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-
-        .preset-buttons .btn {
-            font-size: 0.9em;
-            padding: 12px;
-        }
-
-        /* --- LISTA DE SALAS --- */
-        #roomListContainer {
-            width: 100%;
-            min-height: 200px;
-            max-height: 40vh;
-            overflow-y: auto;
-            background: linear-gradient(135deg, rgba(10, 10, 20, 0.6) 0%, rgba(20, 10, 30, 0.6) 100%);
-            border: 2px solid #333;
-            border-left: 4px solid var(--color-acento-principal);
-            clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
-            margin-bottom: 20px;
-            box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.8);
-        }
-
-        .room-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 15px 20px;
-            border-bottom: 1px solid rgba(255, 117, 24, 0.2);
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .room-item:hover {
-            background: linear-gradient(90deg, rgba(255, 117, 24, 0.1) 0%, rgba(74, 4, 78, 0.1) 100%);
-            border-left: 4px solid var(--color-acento-principal);
-            box-shadow: inset 0 0 20px rgba(255, 117, 24, 0.2);
-        }
-
-        .room-item:last-child { border-bottom: none; }
-
-        .room-info strong {
-            font-size: 1.15em;
-            font-family: var(--fuente-titulos);
-            color: var(--color-acento-principal);
-            text-shadow: 0 0 8px var(--color-acento-principal);
-        }
-
-        .room-info span {
-            font-size: 1em;
-            color: #bbb;
-            display: block;
-            margin-top: 5px;
-        }
-
-        .room-join-button {
-            background: linear-gradient(135deg, var(--color-primario) 0%, var(--color-primario-hover) 100%);
-            color: var(--color-primario-texto);
-            text-shadow: 1px 1px 1px rgba(255, 255, 255, 0.2);
-            box-shadow: 0 0 20px var(--color-primario-sombra), 0 6px 0 var(--color-primario-sombra-oscura);
-            border-top: 2px solid rgba(255, 255, 255, 0.2);
-            padding: 10px 16px;
-            font-size: 0.95em;
-            margin: 0;
-            width: auto;
-        }
-        .room-join-button:hover:not(:disabled) {
-            box-shadow: 0 0 30px var(--color-primario-sombra), 0 8px 0 var(--color-primario-sombra-oscura);
-        }
-
-        .room-list-actions {
-            display: flex;
-            gap: 15px;
-        }
-
-        #finalScore, #finalWave {
-            color: var(--color-acento-principal);
-            font-size: 1.3em;
-            text-shadow: 0 0 10px var(--color-acento-principal);
-        }
-
-        /* --- MEDIA QUERIES --- */
-        @media (max-width: 600px) {
-            .menu-container { padding: 25px; width: 95%; }
-            #menuScreen h2 { font-size: 2.8em; margin-bottom: 25px; }
-            .menu-container h2 { font-size: 1.8em; }
-            .btn, input[type="text"], input[type="number"], select { padding: 13px; font-size: 1.0em; }
-            .preset-buttons { grid-template-columns: 1fr; }
-            .preset-buttons .btn { font-size: 1.0em; }
-            .setting-item { flex-direction: column; align-items: flex-start; }
-            .setting-item label { margin-bottom: 8px; }
-            .setting-item input[type="number"], .setting-item select { width: 100%; }
-            #setting_controlType { width: 100%; }
-            #waveMultiplierValue { margin-left: 0; margin-top: 8px; text-align: left !important; }
-            input[type="range"]#setting_waveMultiplier_slider { margin-top: 15px; }
-            .room-item { flex-direction: column; align-items: flex-start; gap: 12px; }
-            .room-join-button { width: 100%; }
-        }
-
-        @media (max-height: 500px) and (orientation: landscape) {
-            .menu-container { padding: 15px 25px; max-height: 95vh; }
-            #menuScreen h2 { font-size: 2.2em; margin-bottom: 10px; }
-            #menuScreen h2::before { display: none; }
-            .menu-container h2 { font-size: 1.6em; margin-bottom: 10px; }
-            hr { margin: 10px 0; }
-            input[type="text"], input[type="number"], select { padding: 10px; margin: 6px 0; font-size: 0.95em; }
-            .btn { padding: 10px; margin: 6px 0; font-size: 0.95em; }
-            .menu-container h3 { font-size: 1.0em; }
-            .setting-item label { font-size: 0.9em; }
-            .preset-buttons .btn { font-size: 0.8em; padding: 10px; }
-        }
-    </style>
 </head>
 <body>
 
+    <!-- Pantalla de Juego -->
     <div id="gameScreen">
         <canvas id="gameCanvas"></canvas>
     </div>
 
+    <!-- Menú Principal -->
     <div id="menuScreen" class="menu-container">
         <h2>Zombie Shooter</h2>
         <input type="text" id="playerNameInput" placeholder="INTRODUCE TU NOMBRE" maxlength="15" value="Player1">
         <hr>
-        <!-- HTML CORREGIDO: Botones con <span> -->
         <button id="createGameButton" class="btn btn-primary btn-block"><span>Crear Partida</span></button>
         <button id="browseGamesButton" class="btn btn-primary btn-block"><span>Buscar Partidas</span></button>
         <hr>
@@ -564,6 +35,7 @@
         <button id="settingsButton" class="btn btn-secondary btn-block"><span>⚙️ Configuración</span></button>
     </div>
 
+    <!-- Menú de Configuración -->
     <div id="settingsScreen" class="menu-container" style="display: none;">
         <h2>Configuración</h2> 
         <div class="preset-buttons">
@@ -572,49 +44,89 @@
             <button onclick="applyPreset('hard')" class="btn btn-danger"><span>Difícil</span></button>
         </div>
 
+        <!-- CONFIGURACIÓN LOCAL -->
         <div class="settings-group">
-            <h3>Jugador</h3>
-            <div class="setting-item"><label>Método de Control:</label><select id="setting_controlType"><option value="auto">Automático</option><option value="touch">Joystick Táctil</option><option value="keyboard">Teclado/Ratón</option></select></div>
+            <h3>Configuración Local</h3>
+            <div class="setting-item">
+                <label>Método de Control:</label>
+                <select id="setting_controlType">
+                    <option value="auto">Automático</option>
+                    <option value="touch">Joystick Táctil</option>
+                    <option value="keyboard">Teclado/Ratón</option>
+                </select>
+            </div>
+        </div>
+
+        <hr>
+
+        <!-- CONFIGURACIÓN DE PARTIDA -->
+        <h3 style="text-align:center; text-transform:uppercase; letter-spacing: 2px; margin-bottom: 0;">Configuración de Partida</h3>
+        <p style="text-align:center; font-size: 0.9em; opacity: 0.7; margin-top: 5px; margin-bottom: 10px;">(Solo aplica si eres el Host)</p>
+
+        <!-- Grupo: Jugador y Combate -->
+        <div class="settings-group">
+            <h4>Jugador y Combate</h4>
             <div class="setting-item"><label>Vida Máxima:</label><input type="number" id="setting_playerHealth" min="50" max="300" value="100"></div>
             <div class="setting-item"><label>Velocidad:</label><input type="number" id="setting_playerSpeed" min="3" max="12" value="6" step="0.5"></div>
             <div class="setting-item"><label>Cooldown Disparo (ms):</label><input type="number" id="setting_shootCooldown" min="50" max="500" value="150" step="10"></div>
-        </div>
-
-        <div class="settings-group">
-            <h3>Zombies</h3>
-            <div class="setting-item"><label>Vida Máxima:</label><input type="number" id="setting_zombieHealth" min="10" max="100" value="30"></div>
-            <div class="setting-item"><label>Velocidad:</label><input type="number" id="setting_zombieSpeed" min="1" max="8" value="3" step="0.5"></div>
-            <div class="setting-item"><label>Daño de Ataque:</label><input type="number" id="setting_zombieAttack" min="5" max="50" value="10"></div>
-            <div class="setting-item"><label>Cooldown Ataque (ms):</label><input type="number" id="setting_zombieAttackCooldown" min="500" max="3000" value="1000" step="100"></div>
-        </div>
-
-        <div class="settings-group">
-            <h3>Combate</h3>
+            <hr class="subtle">
             <div class="setting-item"><label>Daño de Bala:</label><input type="number" id="setting_bulletDamage" min="5" max="50" value="10"></div>
             <div class="setting-item"><label>Velocidad de Bala:</label><input type="number" id="setting_bulletSpeed" min="10" max="40" value="25"></div>
         </div>
 
+        <!-- Grupo: Opciones del Mapa -->
         <div class="settings-group">
-            <h3>Mapa</h3>
+            <h4>Opciones del Mapa</h4>
             <div class="setting-item"><label>Tamaño del Mapa:</label><select id="setting_mapSize"><option value="40">Pequeño (40x40)</option><option value="60" selected>Mediano (60x60)</option><option value="80">Grande (80x80)</option></select></div>
             <div class="setting-item"><label>Número de Salas:</label><input type="number" id="setting_roomCount" min="3" max="12" value="6"></div>
             <div class="setting-item"><label>Ancho de Pasillos:</label><select id="setting_corridorWidth"><option value="2">Estrecho (2)</option><option value="3" selected>Medio (3)</option><option value="4">Ancho (4)</option></select></div>
         </div>
 
+        <!-- Grupo: Enemigos (Contiene sub-grupos) -->
         <div class="settings-group">
-            <h3>Oleadas</h3>
-            <div class="setting-item"><label>Zombies Iniciales:</label><input type="number" id="setting_initialZombies" min="3" max="20" value="5"></div>
-            <!-- v1.2: Slider de oleadas -->
-            <div class="setting-item"><label>Aum. Zombies / Oleada:</label><span id="waveMultiplierValue" style="color: var(--color-acento-principal); font-weight: bold; min-width: 50px; text-align: right;">+50%</span></div>
-            <input type="range" id="setting_waveMultiplier_slider" min="10" max="100" value="50" step="1" style="width: 100%; margin-top: 5px;">
+            <h3>Enemigos</h3>
+
+            <!-- Sub-Grupo: Aumento por Oleada -->
+            <h4>Aumento por Oleada</h4>
+            <div class="setting-item slider-group">
+                <label>Aum. Zombies Fase 1:</label>
+                <span id="waveMultiplierValue" class="slider-value">+50%</span>
+            </div>
+            <input type="range" id="setting_waveMultiplier_slider" min="10" max="100" value="50" step="1" class="slider-control">
             <input type="hidden" id="setting_waveMultiplier" value="1.5">
+
+            <div class="setting-item slider-group" style="margin-top: 15px;">
+                <label>Ritmo Rápido (Fase 1):</label>
+                <span id="coreBurstSpawnMultiplierValue" class="slider-value">x2.5</span>
+            </div>
+            <input type="range" id="setting_coreBurstSpawnMultiplier_slider" min="110" max="500" value="250" step="10" class="slider-control">
+            <input type="hidden" id="setting_coreBurstSpawnMultiplier" value="2.5">
+
+            <hr class="subtle">
+
+            <!-- Sub-Grupo: Opciones del Zombi -->
+            <h4>Opciones del Zombi</h4>
+            <div class="setting-item"><label>Vida Máxima:</label><input type="number" id="setting_zombieHealth" min="10" max="100" value="30"></div>
+            <div class="setting-item"><label>Velocidad:</label><input type="number" id="setting_zombieSpeed" min="1" max="8" value="3" step="0.5"></div>
+            <div class="setting-item"><label>Daño de Ataque:</label><input type="number" id="setting_zombieAttack" min="5" max="50" value="10"></div>
+            <div class="setting-item"><label>Cooldown Ataque (ms):</label><input type="number" id="setting_zombieAttackCooldown" min="500" max="3000" value="1000" step="100"></div>
+
+            <hr class="subtle">
+
+            <!-- Sub-Grupo: Opciones del Núcleo -->
+            <h4>Opciones del Núcleo</h4>
+            <div class="setting-item"><label>Vida Base del Núcleo:</label><input type="number" id="setting_coreBaseHealth" min="100" max="5000" value="500" step="50"></div>
+            <div class="setting-item"><label>Zombies Fase 1 (Oleada 1):</label><input type="number" id="setting_initialZombies" min="1" max="50" value="10"></div>
+            <div class="setting-item"><label>Ritmo Fase 2 (ms):</label><input type="number" id="setting_coreBaseSpawnRate" min="1000" max="10000" value="5000" step="250"></div>
         </div>
+
 
         <hr>
         <button id="saveSettingsButton" class="btn btn-primary btn-block"><span>Guardar y Volver</span></button>
         <button id="resetSettingsButton" class="btn btn-danger btn-block"><span>Restaurar Defaults</span></button>
     </div>
 
+    <!-- Sala de Espera -->
     <div id="lobbyScreen" class="menu-container" style="display: none;">
         <h2>Sala de Espera</h2>
         <p id="lobbyRoomId"></p>
@@ -625,11 +137,11 @@
             <div id="configSummary" style="margin-top: 5px;"></div>
         </div>
         <hr>
-        <!-- BOTÓN CORREGIDO CON <span> -->
-        <button id="startButton" class="btn btn-primary btn-block"><span>INICIAR PARTIDA</span></button>
-        <button id="backToMenuButton" class="btn btn-danger btn-block"><span>VOLVER AL MENÚ</span></button>
+        <button id="startButton" class="btn btn-primary btn-block"><span>Iniciar Partida</span></button>
+        <button id="backToMenuButton" class="btn btn-danger btn-block"><span>Volver al Menú</span></button>
     </div>
 
+    <!-- Lista de Salas -->
     <div id="roomListScreen" class="menu-container" style="display: none;">
         <h2>Salas Activas</h2>
         <div id="roomListContainer"></div>
@@ -639,16 +151,19 @@
         </div>
     </div>
 
+    <!-- Fin de Partida -->
     <div id="gameOverScreen" class="menu-container" style="display: none;">
         <h2>GAME OVER</h2>
         <p>Puntuación Final: <span id="finalScore" style="font-weight: bold;">0</span></p>
         <p>Oleada Alcanzada: <span id="finalWave" style="font-weight: bold;">0</span></p>
-        
-        <!-- v1.2: Botones de post-partida -->
-        <button id="continueGameButton" class="btn btn-secondary btn-block"><span>Continuar en Sala</span></button>
-        <button id="exitToMenuButton" class="btn btn-danger btn-block"><span>Salir al Menú</span></button>
+
+        <div class="game-over-actions">
+            <button id="continueGameButton" class="btn btn-primary btn-block"><span>Continuar</span></button>
+            <button id="exitToMenuButton" class="btn btn-danger btn-block"><span>Salir al Menú</span></button>
+        </div>
     </div>
 
+    <!-- Scripts -->
     <script src="/socket.io/socket.io.js"></script> 
     <script src="js/entities.js"></script>
     <script src="js/game.js"></script>
